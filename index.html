@@ -1,49 +1,10 @@
-<!doctype html>
-<html lang="pt-BR">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src https://dashhughes.adirck-sites.workers.dev; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
-<title>DashHughes | Monitoramento</title>
-<link rel="stylesheet" href="./style.css?v=6">
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src https://dashhughes.adirck-sites.workers.dev; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>DashHughes | Centro de Operações</title><link rel="stylesheet" href="./style.css?v=8">
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
-<script type="module" src="./app.js?v=7"></script>
-<header><a class="brand" href="./">Dash<span>Hughes</span></a><div class="controls"><button id="tema" class="quiet" hidden>Alternar tema</button><button id="sair" class="quiet" hidden>Sair</button></div></header>
-<main>
-  <section id="painel" hidden>
-    
-    <div class="toolbar"><div><h1>Monitoramento</h1><p id="atualizacao"></p><p id="status" role="status">Carregando…</p></div>
-    <div class="controls"><label>Período <select id="periodo"><option value="now-15m">15 minutos</option><option value="now-1h">1 hora</option><option value="now-6h">6 horas</option><option value="now-24h">24 horas</option><option value="now-30d" selected>Últimos 30 dias</option></select></label><button id="tv" class="quiet" hidden>Modo TV</button></div></div>
-    <section id="evolucao" class="card evolution" aria-labelledby="titulo-evolucao" hidden>
-      <h2 id="titulo-evolucao">Evolução dos problemas</h2>
-      <p id="evolucao-status" role="status"></p>
-      <div class="chart overview-chart"><canvas role="img" aria-label="Número de problemas por prioridade ao longo do tempo"></canvas></div>
-    </section>
-
-    <div id="cards" class="overview-cards"></div>
-    <section id="ocorrencias" class="occurrences card" aria-labelledby="titulo-ocorrencias" hidden>
-      <div class="toolbar">
-        <div><h2 id="titulo-ocorrencias">Lojas com problemas</h2>
-          <p id="status-ocorrencias" role="status">Buscando ocorrências…</p></div>
-        <label for="buscar-loja">Buscar loja ou problema</label>
-        <input id="buscar-loja" type="search" placeholder="Nome, código ou problema">
-      </div>
-      <div class="table-scroll" hidden>
-        <table><thead><tr><th scope="col">Loja</th><th scope="col">Severidade</th><th scope="col">Problema</th><th scope="col">Início do problema</th></tr></thead>
-          <tbody></tbody></table>
-      </div>
-    </section>
-
-  </section>
-</main>
-</html>
-
-
-
-
-
-
-
-
-
-
-
+<script type="module" src="./app.js?v=8"></script></head><body>
+<header><a class="brand" href="./?v=8"><b class="brand-icon">ϟ</b><b>Dash<span>Hughes</span></b></a>
+<nav class="nav"><a href="./?v=8" class="active">Visão geral</a><a href="./?v=8#lojas">Lojas</a><a href="./?v=8#alertas" >Alertas</a><a href="./?v=8#links">Links</a><a href="./?v=8#historico">Histórico</a></nav>
+<div class="header-actions"><span id="live" class="live">Ao vivo</span><button id="tv" class="quiet">▣ Modo TV</button><button id="tema" class="quiet" aria-label="Alternar tema">☾</button><button id="conta" class="avatar" aria-label="Menu da conta" aria-expanded="false">SL</button><button id="sair" class="quiet logout-menu" hidden>Sair</button></div></header>
+<main id="painel" ><div class="page-heading"><div><h1>Carregando…</h1><p id="subtitulo" class="subtext"></p></div><div id="periods" class="periods" aria-label="Período"></div></div><p id="status" class="status-message" role="status"></p><div id="conteudo"></div></main>
+<dialog id="loja-dialog"><button class="quiet close" id="fechar-dialog">Fechar</button><div id="loja-conteudo"></div></dialog></body></html>

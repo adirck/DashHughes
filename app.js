@@ -1,529 +1,232 @@
 import { API_URL, REFRESH_SECONDS } from './config.js';
-
-const storageKey = 'dashhughes-session';
-const status = document.querySelector('#status');
-const form = document.querySelector('#login');
-const panel = document.querySelector('#painel');
-const number = new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
-const clock = new Intl.DateTimeFormat('pt-BR',{timeStyle:'short'});
-const charts = new Map();
-const ranges = new Set(['now-15m','now-1h','now-6h','now-24h','now-30d']);
-const chartOptions = {responsive:true,maintainAspectRatio:false,animation:false};
-const states = {erro:'Consulta temporariamente indisponível.',sem_dados:'Sem dados no período.',consulta_indisponivel:'Consulta indisponível para o portal.'};
-const levels = {verde:'Normal',amarelo:'Atenção',vermelho:'Crítico',limite:'Limite atingido'};
-
-function signOut() {
-  sessionStorage.removeItem(storageKey);
-  window.location.replace('./login.html');
+const sessionKey='dashhughes-session';
+const params=new URLSearchParams(location.search);
+const categories=[
+ {id:51,key:'5',short:'Crítico',title:'Prioridade Crítica',color:'#ff5275',names:['5','disaster','critical']},
+ {id:53,key:'4',short:'Alta',title:'Prioridade Alta',color:'#ff575e',names:['4','high']},
+ {id:55,key:'3',short:'Média',title:'Prioridade Média',color:'#ff8a3b',names:['3','average','medium']},
+ {id:14,key:'2',short:'Aviso',title:'Aviso',color:'#f4cd4d',names:['2','warning','warn']},
+ {id:52,key:'1',short:'Informação',title:'Informações',color:'#6da9ff',names:['1','information','info']},
+];
+const periods=[['now-15m','15 min'],['now-1h','1 hora'],['now-6h','6 horas'],['now-24h','24 horas'],['now-30d','30 dias']];
+let period=periods.some(([value])=>value===params.get('from'))?params.get('from'):'now-30d';
+let panels=[],incidents=[],updated=0,query='',selected='all',limit=10;
+let charts=[],timer,activeRequest;
+const hiddenLines=new Set();
+const detail=document.querySelector('[data-detail]');
+const category=categories.find(item=>item.id===Number(params.get('id')));
+const format=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1});
+const dates=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
+const fullDates=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'medium'});
+const status=document.querySelector('#status');
+const node=(tag,text,cls)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(cls)el.className=cls;return el;};
+function out(){sessionStorage.removeItem(sessionKey);location.replace('./login.html');}
+async function api(path,options={}){
+ const response=await fetch(API_URL+path,{...options,cache:'no-store',signal:options.signal??AbortSignal.timeout(40000)});
+ if(response.status===401&&!document.querySelector('#login')){out();throw new Error('Sessão encerrada.');}
+ const data=await response.json();
+ if(!response.ok)throw new Error(data.error??'Não foi possível atualizar os dados.');
+ return data;
 }
-
-async function api(path,options = {}) {
-  if (!API_URL) throw new Error('Conexão com o serviço de monitoramento pendente.');
-  const response = await fetch(API_URL+path,{...options,cache:'no-store',signal:options.signal ?? AbortSignal.timeout(35_000)});
-  if (response.status === 401 && !form) {
-    signOut();
-    throw new Error('Sessão encerrada.');
+const login=document.querySelector('#login');
+if(login){
+ login.addEventListener('submit',async event=>{
+  event.preventDefault();const button=login.querySelector('button');button.disabled=true;
+  try{
+   const data=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:login.elements.user.value,password:login.elements.password.value})});
+   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=8');
+  }catch(error){status.textContent=error.message;}finally{button.disabled=false;login.elements.password.value='';}
+ });
+}
+function timestamp(value){
+ const text=String(value??'').trim();
+ if(/^\d{10}$/.test(text))return Number(text)*1000;
+ if(/^\d{13}$/.test(text))return Number(text);
+ const parsed=Date.parse(text.replaceAll('/','-').replace(' ','T')+(/Z|[+-]\d\d:\d\d$/.test(text)?'':'-03:00'));
+ return Number.isFinite(parsed)?parsed:Infinity;
+}
+function age(row){
+ const time=timestamp(row.horario);if(!Number.isFinite(time))return '—';
+ const minutes=Math.max(0,Math.floor((Date.now()-time)/60000));
+ if(minutes<60)return minutes+' min';
+ if(minutes<1440)return Math.floor(minutes/60)+' h';
+ return Math.floor(minutes/1440)+' d';
+}
+function started(row){const t=timestamp(row.horario);return Number.isFinite(t)?dates.format(t):'—';}
+function severity(row){return categories.find(item=>item.names.includes(String(row.severidade).toLowerCase()));}
+function rowsFor(cat){return incidents.filter(row=>!cat||severity(row)?.id===cat.id).sort((a,b)=>timestamp(a.horario)-timestamp(b.horario));}
+function simple(value){
+ const text=String(value??'').trim(),link=text.match(/\bwan\s*([12])\b/i)?.[1],connection=link?'Link '+link:'Uma conexão';
+ if(/license not registered/i.test(text))return 'Licença do firewall não cadastrada';
+ if(/\brestarted\b|\brebooted\b/i.test(text))return 'Firewall reiniciou';
+ if(/\bunreachable\b|\(NoData\)/i.test(text))return 'Firewall não responde ao monitoramento';
+ if(/highpktloss|packet loss|pkt\s*loss/i.test(text))return connection+' com perda de dados';
+ if(/\blatency\b/i.test(text))return connection+' lenta';
+ if(/\bdown\b/i.test(text))return connection+' indisponível';
+ return text;
+}
+function brand(row){
+ const text=row.loja.toUpperCase();
+ return ['CAROL BASSI','CRIS BARROS','MARIAFILO','MARIA FILO','ANIMALE','FOXTON','FABULA','FARM','BYNV','NV','OFF PREMIUM'].find(name=>text.includes(name))?.replace('MARIAFILO','MARIA FILÓ').replace('MARIA FILO','MARIA FILÓ').replace('BYNV','NV')??'OUTRAS';
+}
+function storeName(row){return row.loja.replace(/\s*\(\s*firewall\s*\)\s*/ig,'').replaceAll('_',' ').replace(/\s+/g,' ').trim();}
+function colored(el,cat){el.style.setProperty('--severity',cat?.color??'#a6b3c2');return el;}
+function badge(cat){return colored(node('span',cat?.short??'Sem classificação','badge'),cat);}
+function panelValue(cat){const p=panels.find(item=>item.id===cat.id);return p?.estado==='ok'?p.series?.[0]?.valor:null;}
+function heading(text){return node('h2',text);}
+function surface(cls){return node('section',undefined,'surface '+cls);}
+function periodControls(){
+ const wrap=document.querySelector('#periods');wrap.replaceChildren();
+ for(const [value,label]of periods){const b=node('button',label,value===period?'selected':'');b.type='button';b.setAttribute('aria-pressed',String(value===period));
+ b.onclick=()=>{period=value;const url=new URL(location.href);url.searchParams.set('from',value);history.replaceState(null,'',url);periodControls();refresh();};wrap.append(b);}
+}
+function lineSeries(cat){
+ const panel=panels.find(item=>item.id===cat.id);
+ return (panel?.series??[]).filter(row=>row.historico?.length).map(row=>({label:cat.short,color:cat.color,points:row.historico}));
+}
+function plot(canvas,series,spark=false){
+ if(!window.Chart)return;
+ const chart=new window.Chart(canvas,{type:'line',data:{datasets:series.map(item=>({
+  label:item.label,data:item.points.map(([x,y])=>({x,y})),borderColor:item.color,backgroundColor:item.color+'20',
+  fill:!spark,stepped:true,borderWidth:spark?1.5:2,pointRadius:0,pointHoverRadius:4,hidden:hiddenLines.has(item.label),
+ }))},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,interaction:{mode:'nearest',axis:'x',intersect:false},
+ scales:{x:{type:'linear',display:!spark,grid:{display:false},border:{display:false},ticks:{color:'#8195ab',font:{size:10,family:'Consolas'},maxTicksLimit:period==='now-30d'?12:6,
+ callback:value=>period==='now-30d'?dates.format(value).split(',')[0]:dates.format(value).split(',').at(-1)}},
+ y:{display:!spark,beginAtZero:true,border:{display:false},grid:{color:'#22313e'},ticks:{color:'#8195ab',precision:0,maxTicksLimit:6,font:{size:10,family:'Consolas'}}}},
+ plugins:{legend:{display:!spark&&series.length>1,position:'top',align:'end',labels:{color:'#aebdcc',boxWidth:10,boxHeight:2,font:{size:10}},
+ onClick:(_event,item,legend)=>{const visible=legend.chart.isDatasetVisible(item.datasetIndex);if(visible)hiddenLines.add(item.text);else hiddenLines.delete(item.text);legend.chart.setDatasetVisibility(item.datasetIndex,!visible);legend.chart.update();}},
+ tooltip:{enabled:!spark,backgroundColor:'#152331',titleColor:'#e3eaf2',bodyColor:'#c7d5e4',callbacks:{title:items=>fullDates.format(items[0].parsed.x),label:item=>item.dataset.label+': '+format.format(item.parsed.y)+' problemas'}}}}});
+ charts.push(chart);
+}
+function chartPanel(cat){
+ const box=surface('chart-panel');box.id='historico';const head=node('div',undefined,'panel-heading');
+ const group=node('div',undefined,'heading-group');group.append(heading(cat?'Ocorrências de '+cat.title.toLowerCase():'Evolução das ocorrências'));
+ group.append(node('span',period==='now-30d'?'últimos 30 dias · 2 médias por dia':'horário de Brasília','subtext'));head.append(group);box.append(head);
+ const wrap=node('div',undefined,'chart-wrap'+(cat?' detail-chart':'')),canvas=node('canvas');canvas.setAttribute('aria-label','Número de problemas por data');canvas.setAttribute('role','img');wrap.append(canvas);box.append(wrap);
+ const series=cat?lineSeries(cat):categories.flatMap(lineSeries);
+ if(series.length)queueMicrotask(()=>plot(canvas,series));else wrap.replaceChildren(node('p','Histórico indisponível no período selecionado.','empty'));
+ return box;
+}
+function statCards(){
+ const grid=node('div',undefined,'stats-grid');grid.id='alertas';
+ for(const cat of categories){
+  const card=colored(node('a',undefined,'stat-card'),cat);card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=8';
+  const label=node('div',undefined,'stat-label');label.append(node('span',undefined,'dot'),node('span',cat.short));
+  const value=panelValue(cat),metric=node('div',undefined,'stat-value'+(value===0?' zero':''));metric.append(node('strong',value===null?'—':format.format(value)));
+  const spark=node('div',undefined,'spark'),canvas=node('canvas');spark.append(canvas);metric.append(spark);
+  const rows=rowsFor(cat);const caption=rows.length?'Mais antigo aberto há '+age(rows[0]):'Nenhum caso aberto';
+  card.append(label,metric,node('p',caption,'stat-caption'));grid.append(card);queueMicrotask(()=>plot(canvas,lineSeries(cat),true));
+ }return grid;
+}
+function distribution(){
+ const box=surface('distribution');const head=node('div',undefined,'panel-heading');head.append(heading('O que está acontecendo'),node('span',incidents.length+' ocorrências','subtext'));box.append(head);
+ const grouped=new Map();for(const row of incidents){const key=simple(row.problema);grouped.set(key,(grouped.get(key)??0)+1);}
+ const all=[...grouped].sort((a,b)=>b[1]-a[1]),top=all.slice(0,6);if(all.length>6)top.push(['Outros',all.slice(6).reduce((sum,row)=>sum+row[1],0)]);
+ const list=node('div',undefined,'distribution-list'),maximum=top[0]?.[1]??1;
+ for(const [name,count]of top){const item=node('div'),label=node('div',undefined,'distribution-line');label.append(node('span',name),node('strong',count));const track=node('div',undefined,'bar-track'),bar=node('div',undefined,'bar-fill');bar.style.width=count/maximum*100+'%';if(name.includes('Firewall'))bar.style.background='var(--medium)';track.append(bar);item.append(label,track);list.append(item);}
+ box.append(list);return box;
+}
+function brandPanel(){
+ const box=surface('brand-panel');box.id='lojas';box.append(heading('Lojas afetadas por marca'));
+ const brands=new Map();for(const row of incidents){const name=brand(row);if(!brands.has(name))brands.set(name,new Set());brands.get(name).add(row.host||row.loja);}
+ const grid=node('div',undefined,'brand-grid');grid.style.marginTop='14px';
+ for(const [name,stores]of [...brands].sort((a,b)=>b[1].size-a[1].size)){const chip=node('div',undefined,'brand-chip');chip.append(node('span',name),node('strong',stores.size));grid.append(chip);}
+ box.append(grid);return box;
+}
+function oldestPanel(){
+ const box=surface('oldest-panel'),head=node('div',undefined,'panel-heading');head.append(heading('Casos mais antigos sem solução'));const all=node('a','Ver todos');all.href='#ocorrencias';head.append(all);box.append(head);
+ for(const row of rowsFor().slice(0,5)){
+  const item=node('div',undefined,'oldest-row'),copy=node('div',undefined,'oldest-copy'),name=node('strong',storeName(row));name.append(node('small',row.host));
+  const problem=node('p',simple(row.problema));problem.title=row.problema;copy.append(name,problem);item.append(node('span',age(row),'age-tag'),copy,badge(severity(row)));box.append(item);
+ }return box;
+}
+function searchControl(label,placeholder,callback){
+ const box=node('div',undefined,'search'),input=node('input');const id='search-stores';input.id=id;input.type='search';input.value=query;input.placeholder=placeholder;
+ const caption=node('label',label);caption.htmlFor=id;input.oninput=()=>{query=input.value;callback();};box.append(caption,input);return box;
+}
+function tablePanel(){
+ const box=surface('table-panel');box.id='ocorrencias';const toolbar=node('div',undefined,'table-toolbar'),title=node('div',undefined,'table-title');title.append(heading('Ocorrências abertas'));const tabs=node('div',undefined,'filter-tabs');title.append(tabs);
+ const table=node('table'),thead=table.createTHead().insertRow();for(const label of ['Severidade','Loja','Problema','Aberto há','Início'])thead.append(node('th',label));
+ const body=table.createTBody(),scroll=node('div',undefined,'table-scroll');scroll.append(table);const footer=node('div',undefined,'table-footer'),count=node('span'),more=node('button','Carregar mais','text-button');more.onclick=()=>{limit+=10;update();};footer.append(count,more);
+ function update(){
+  tabs.replaceChildren();for(const [key,label,amount]of [['all','Todas',incidents.length],...categories.map(cat=>[cat.key,cat.short,rowsFor(cat).length])]){
+   const tab=node('button',label+' · '+amount,selected===key?'selected':'');tab.onclick=()=>{selected=key;limit=10;update();};tabs.append(tab);
   }
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error ?? 'Serviço indisponível.');
-  return body;
-}
-
-function message(error) {
-  return error instanceof TypeError || error.name === 'TimeoutError'
-    ? 'Não foi possível conectar ao serviço de monitoramento.'
-    : error.message;
-}
-
-if (form) {
-  if (sessionStorage.getItem(storageKey)) window.location.replace('./');
-  form.addEventListener('submit',async event => {
-    event.preventDefault();
-    const button = form.querySelector('button');
-    button.disabled = true;
-    status.textContent = 'Validando acesso…';
-    try {
-      const body = await api('/api/login',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({user:form.elements.user.value,password:form.elements.password.value}),
-      });
-      sessionStorage.setItem(storageKey,body.token);
-      window.location.replace('./');
-    } catch (error) {
-      status.textContent = message(error);
-    } finally {
-      form.elements.password.value = '';
-      button.disabled = false;
-    }
-  });
-}
-
-function element(tag,text,classes) {
-  const node = document.createElement(tag);
-  if (text !== undefined) node.textContent = text;
-  if (classes) node.className = classes;
-  return node;
-}
-
-function disposeCharts() {
-  for (const chart of charts.values()) chart.destroy();
-  charts.clear();
-}
-const graphDate = new Intl.DateTimeFormat('pt-BR',{
-  timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23',
-});
-const hiddenPriorities = new Set();
-
-function draw(canvas,series,detail,overview=false) {
-  if (!window.Chart || !series.some(row => row.historico?.length)) return;
-  const colors = ['#51b99b','#729ee9','#d79048','#b781d2','#70b9c1'];
-  const theme = getComputedStyle(canvas);
-  const foreground = theme.getPropertyValue('--text').trim();
-  const grid = theme.getPropertyValue('--border').trim();
-  const points = series.filter(row=>row.historico?.length);
-  const data = {datasets:points.map((row,i)=>{
-    const color = row.cor ? theme.getPropertyValue('--chart-'+row.cor).trim() || colors[i%colors.length] : colors[i%colors.length];
-    return {
-      label:row.nome,borderColor:color,backgroundColor:color,
-      data:row.historico.map(([x,y])=>({x,y})),pointRadius:detail && row.historico.length === 1?4:0,
-      pointHoverRadius:5,borderWidth:2,stepped:true,
-      hidden:overview && hiddenPriorities.has(row.nome),
-    };
-  })};
-  const chart = new window.Chart(canvas,{
-    type:'line',data,
-    options:{...chartOptions,parsing:false,interaction:{mode:'nearest',axis:'x',intersect:false},
-      scales:{
-        x:{type:'linear',display:detail,grid:{color:grid},
-          title:{display:detail,text:'Data (Brasília)',color:foreground},
-          ticks:{maxTicksLimit:15,color:foreground,callback:value=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit'}).format(value)}},
-        y:{display:detail,beginAtZero:true,grid:{color:grid},
-          title:{display:detail,text:'Número de problemas',color:foreground},
-          ticks:{color:foreground,precision:0}},
-      },
-      plugins:{legend:{display:detail,labels:{color:foreground,usePointStyle:true,boxWidth:10},
-        ...(overview ? {onClick:(_event,item,legend)=>{
-          const chart = legend.chart;
-          const index = item.datasetIndex;
-          const visible = chart.isDatasetVisible(index);
-          if (visible) hiddenPriorities.add(item.text);
-          else hiddenPriorities.delete(item.text);
-          chart.setDatasetVisibility(index,!visible);
-          chart.update();
-        }} : {})},
-        tooltip:{enabled:detail,callbacks:{
-          title:items=>inicioFormatter.format(items[0].parsed.x),
-          label:item=>item.dataset.label+': '+number.format(item.parsed.y),
-        }},
-      },
-    },
-  });
-  charts.set(canvas,chart);
-}
-
-function drawOverview(panels,visible) {
-  const section = document.querySelector('#evolucao');
-  if (!section) return;
-  section.hidden = !visible;
-  if (!visible) return;
-  const message = section.querySelector('#evolucao-status');
-  const wrap = section.querySelector('.overview-chart');
-  const series = panels.flatMap(panel=>{
-    if (panel.estado !== 'ok') return [];
-    const category = severities.get(panel.id);
-    return panel.series.filter(row=>row.historico?.length).map(row=>({
-      ...row,cor:category?.cor,nome:panel.series.length===1 ? headingFor(panel) : headingFor(panel)+' · '+row.nome,
-    }));
-  });
-  wrap.hidden = !series.length || !window.Chart;
-  if (wrap.hidden) {
-    message.textContent = series.length ? 'Gráfico indisponível neste navegador.' : 'Sem dados históricos no período selecionado.';
-    return;
+  const term=query.trim().toLowerCase();const rows=rowsFor().filter(row=>(selected==='all'||severity(row)?.key===selected)&&(!term||[row.loja,row.host,row.problema,simple(row.problema)].some(value=>value.toLowerCase().includes(term))));
+  body.replaceChildren();for(const row of rows.slice(0,limit)){const tr=body.insertRow(),cat=severity(row),cell=colored(tr.insertCell(),cat);cell.className='severity-cell';cell.append(node('span',undefined,'dot'),node('span',cat?.short??'Outra'));
+   const name=tr.insertCell();name.append(node('strong',storeName(row)),node('small',row.host+' · '+brand(row)));
+   const problem=tr.insertCell();problem.textContent=simple(row.problema);problem.title=row.problema;
+   const duration=tr.insertCell();duration.className='mono';duration.textContent=age(row);
+   const start=tr.insertCell();start.className='mono';start.textContent=started(row);const t=timestamp(row.horario);start.title=Number.isFinite(t)?fullDates.format(t):'Início indisponível';
   }
-  message.textContent = document.querySelector('#periodo')?.value === 'now-30d' ? 'Média de problemas em cada metade do dia · até 2 pontos por dia.' : '';
-  draw(wrap.querySelector('canvas'),series,true,true);
+  count.textContent='Mostrando '+Math.min(limit,rows.length)+' de '+rows.length;more.hidden=limit>=rows.length;
+ }
+ toolbar.append(title,searchControl('Buscar loja, código ou problema','Ex.: SOM078, Iguatemi, link 2',()=>{limit=10;update();}));
+ box.append(toolbar,scroll,footer);update();return box;
 }
-
-
-function valueLabel(value,unit) {
-  return number.format(value)+(unit && unit !== 'none' ? ' '+unit : '');
+function showStore(row){
+ const dialog=document.querySelector('#loja-dialog'),content=document.querySelector('#loja-conteudo');content.replaceChildren(heading(storeName(row)),node('p',row.host+' · '+brand(row)));
+ for(const item of incidents.filter(item=>item.host===row.host)){const part=node('div',undefined,'dialog-case');part.append(badge(severity(item)),node('p',simple(item.problema)),node('small','Início: '+(Number.isFinite(timestamp(item.horario))?fullDates.format(timestamp(item.horario)):'—')));content.append(part);}
+ dialog.showModal();
 }
-function valueRow(row,unit) {
-  const line = element('div',undefined,'metric');
-  line.append(element('dt',row.nome),element('dd',valueLabel(row.valor,unit)));
-  if (levels[row.nivel]) line.append(element('span',levels[row.nivel],'badge '+row.nivel));
-  return line;
-}
-function canvasFor(title,large = false) {
-  const wrap = element('div',undefined,large?'chart detail-chart':'chart');
-  const canvas = element('canvas');
-  canvas.setAttribute('role','img');
-  canvas.setAttribute('aria-label','Histórico de '+title);
-  wrap.append(canvas);
-  return {wrap,canvas};
-}
-function card(data,period,occurrences) {
-  const category = severities.get(data.id);
-  const node = element('article',undefined,'card priority-card');
-  if (category) node.classList.add('priority-'+category.cor);
-  const head = element('div',undefined,'priority-head');
-  const info = element('div');
-  const link = element('a',headingFor(data));
-  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period)+'&v=7';
-  const heading = element('h2');
-  heading.append(link);
-  info.append(heading);
-  head.append(info);
-  node.append(head);
-  let canvas;
-  if (data.estado === 'ok') {
-    const list = element('dl');
-    for (const row of data.series.slice(0,3)) list.append(valueRow(row,data.unidade));
-    info.append(list);
-    if (data.series.some(row => row.historico?.length)) {
-      const plot = canvasFor(headingFor(data));
-      canvas = plot.canvas;
-      head.append(plot.wrap);
-    }
-  } else info.append(element('p',states[data.estado] ?? 'Dados indisponíveis.'));
-  if (category) {
-    const cases = element('div',undefined,'priority-cases');
-    cases.dataset.painel = data.id;
-    node.append(cases);
-    if (occurrences) renderOldest(cases,occurrences,category);
-    else cases.append(element('p',occurrences === null ? 'Lista de casos indisponível.' : 'Carregando os casos abertos…'));
+function detailStores(){
+ const box=surface('stores-panel'),toolbar=node('div',undefined,'table-toolbar'),title=node('div',undefined,'heading-group');title.append(heading('Lojas nesta prioridade'),node('span','ordenadas pelo tempo em aberto','subtext'));
+ const list=node('div'),feedback=node('p',undefined,'subtext');feedback.setAttribute('role','status');
+ function update(){
+  const term=query.toLowerCase().trim(),all=rowsFor(category);const rows=all.filter(row=>!term||[row.loja,row.host,row.problema,simple(row.problema)].some(value=>value.toLowerCase().includes(term)));
+  const max=Math.max(1,...all.map(row=>Date.now()-timestamp(row.horario)));list.replaceChildren();
+  for(const row of rows){const item=colored(node('div',undefined,'store-row'),category),name=node('div',undefined,'store-name');name.append(node('strong',storeName(row)),node('small',row.host+' · '+brand(row)+' · desde '+started(row)));
+   const track=node('div',undefined,'bar-track'),bar=node('div',undefined,'bar-fill');bar.style.background=category.color;bar.style.width=Math.max(2,(Date.now()-timestamp(row.horario))/max*100)+'%';track.append(bar);
+   const actions=node('div',undefined,'store-buttons'),copy=node('button','Copiar dados','quiet'),view=node('button','Ver loja','quiet');
+   copy.onclick=async()=>{try{await navigator.clipboard.writeText([storeName(row),row.host,simple(row.problema),'Início: '+started(row)].join('\n'));feedback.textContent='Dados da loja copiados.';}catch{feedback.textContent='Não foi possível copiar. Abra Ver loja para consultar os dados.';}};
+   view.onclick=()=>showStore(row);actions.append(copy,view);item.append(name,track,node('span',age(row),'store-duration'),actions);list.append(item);
   }
-  return {node,canvas,series:data.series?.slice(0,3)};
+  if(!rows.length)list.append(node('p','Nenhuma ocorrência encontrada.','empty'));
+ }
+ toolbar.append(title,searchControl('Filtrar','Loja ou código',update));box.append(toolbar,list,feedback);update();return box;
 }
-
-function detailContent(data,container) {
-  const title = document.querySelector('h1');
-  title.textContent = headingFor(data);
-  const category = severities.get(data.id);
-  if (category) title.classList.add('priority-title','priority-'+category.cor);
-  if (data.estado !== 'ok') {
-    container.replaceChildren(element('p',states[data.estado] ?? 'Dados indisponíveis.'));
-    return;
-  }
-  const {wrap,canvas} = canvasFor(data.titulo,true);
-  const table = element('table');
-  const head = table.createTHead().insertRow();
-  for (const label of ['Série','Último valor','Horário','Status']) {
-    const th = element('th',label);
-    th.scope = 'col';
-    head.append(th);
-  }
-  const body = table.createTBody();
-  for (const row of data.series) {
-    const tr = body.insertRow();
-    for (const text of [row.nome,valueLabel(row.valor,data.unidade),row.timestamp === null?'—':clock.format(row.timestamp),levels[row.nivel] ?? '—']) {
-      tr.insertCell().textContent = text;
-    }
-  }
-  const scroll = element('div',undefined,'table-scroll');
-  scroll.append(table);
-  const hasHistory = data.series.some(row => row.historico?.length);
-  container.replaceChildren(...(hasHistory && window.Chart?[wrap,scroll]:[scroll]));
-  if (hasHistory) draw(canvas,data.series.map(row=>({...row,cor:category?.cor,nome:data.series.length===1?headingFor(data):row.nome})),true);
+function render(){
+ const focused=document.activeElement?.id,selection=document.activeElement?.selectionStart;
+ for(const chart of charts)chart.destroy();charts=[];
+ const content=document.querySelector('#conteudo');content.replaceChildren();
+ const subtitle=document.querySelector('#subtitulo'),title=document.querySelector('h1');
+ const stores=new Set(incidents.map(row=>row.host||row.loja)).size;
+ if(detail){
+  if(!category){title.textContent='Prioridade indisponível';return;}
+  title.textContent=category.title;subtitle.textContent='Ocorrências abertas nas lojas desta prioridade';
+  let back=document.querySelector('.back');if(!back){back=node('a','‹ Visão geral','back');back.href='./?from='+period+'&v=8';document.querySelector('.page-heading').before(back);}
+  const titleBox=title.parentElement;if(!titleBox.parentElement.classList.contains('detail-title')){const wrapper=colored(node('div',undefined,'detail-title'),category);titleBox.before(wrapper);wrapper.append(node('span','⚠','detail-icon'),titleBox);}
+  const rows=rowsFor(category),top=node('div',undefined,'detail-top'),kpis=node('div',undefined,'detail-kpis');
+  const counts=[['Ocorrências agora',panelValue(category)??rows.length],['Lojas afetadas',new Set(rows.map(row=>row.host||row.loja)).size],['Mais antiga',rows.length?age(rows[0]):'—'],['Mais recente',rows.length?age(rows.at(-1)):'—']];
+  counts.forEach(([label,value],index)=>{const kpi=surface('detail-kpi');const metric=node('strong',value);if(index===2)metric.style.color=category.color;kpi.append(node('p',label),metric);if(index>=2&&rows.length)kpi.append(node('small',storeName(index===2?rows[0]:rows.at(-1))));kpis.append(kpi);});
+  top.append(kpis,chartPanel(category));content.append(top,detailStores());
+ }else{
+  title.textContent='Saúde da rede das lojas';subtitle.textContent=stores+' lojas com ocorrência · '+incidents.length+' ocorrências abertas · Firewalls monitorados via Grafana';
+  const chartsRow=node('div',undefined,'chart-layout');chartsRow.append(chartPanel(),distribution());
+  const support=node('div',undefined,'support-layout');support.append(brandPanel(),oldestPanel());content.append(statCards(),chartsRow,support,tablePanel());
+  const links=node('div');links.id='links';content.append(links);
+ }
+ if(focused==='search-stores'){const input=document.querySelector('#search-stores');input?.focus();input?.setSelectionRange(selection,selection);}
 }
-
-const severities = new Map([
-  [51,{titulo:'Problemas críticos',cor:'critical',matches:['5','disaster','critical']}],
-  [53,{titulo:'Prioridade Alta',cor:'high',matches:['4','high']}],
-  [55,{titulo:'Prioridade Média',cor:'medium',matches:['3','average','medium']}],
-  [14,{titulo:'Aviso',cor:'warning',matches:['2','warning','warn']}],
-  [52,{titulo:'Informações',cor:'info',matches:['1','information','info']}],
-]);
-const severityLabels = {'0':'Sem classificação','1':'Informativa','2':'Aviso','3':'Média','4':'Alta','5':'Crítica',disaster:'Crítica',critical:'Crítica',high:'Alta',average:'Média',medium:'Média',
-  warning:'Aviso',warn:'Aviso',information:'Informativa',info:'Informativa', 'not classified':'Sem classificação'};
-const headingFor = data => severities.get(data.id)?.titulo ?? data.titulo;
-
-const inicioFormatter = new Intl.DateTimeFormat('pt-BR',{
-  timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'medium',
-});
-function formatarInicio(value) {
-  const text = String(value ?? '').trim();
-  if (!text) return '—';
-  if (/^\d{10}$/.test(text)) return inicioFormatter.format(Number(text)*1000);
-  if (/^\d{13}$/.test(text)) return inicioFormatter.format(Number(text));
-  return text;
+async function refresh(){
+ clearTimeout(timer);activeRequest?.abort();const controller=new AbortController();activeRequest=controller;
+ try{
+  const options={headers:{Authorization:'Bearer '+sessionStorage.getItem(sessionKey)},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(45000)])};
+  const [summary,problems]=await Promise.all([api('/api/resumo?from='+period+'&to=now',options),api('/api/problemas',options)]);
+  if(controller.signal.aborted)return;panels=summary.paineis;incidents=problems.ocorrencias;updated=Date.parse(summary.atualizadoEm);status.textContent='';render();
+ }catch(error){if(!controller.signal.aborted)status.textContent=error.message==='Failed to fetch'?'Não foi possível atualizar. Exibindo os últimos dados.':error.message;}
+ finally{if(!controller.signal.aborted)timer=setTimeout(refresh,REFRESH_SECONDS*1000);}
 }
-
-function inicioTimestamp(value) {
-  const text = String(value ?? '').trim();
-  if (/^\d{10}$/.test(text)) return Number(text)*1000;
-  if (/^\d{13}$/.test(text)) return Number(text);
-  if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(text)) {
-    const time = Date.parse(text.replaceAll('/','-').replace(' ','T'));
-    if (Number.isFinite(time)) return time;
-  }
-  return Infinity;
+if(!login){
+ if(!sessionStorage.getItem(sessionKey))out();
+ else{
+  periodControls();document.querySelector('#sair').onclick=out;
+  document.querySelector('#conta').onclick=event=>{const button=document.querySelector('#sair');button.hidden=!button.hidden;event.currentTarget.setAttribute('aria-expanded',String(!button.hidden));};
+  const theme=document.querySelector('#tema');theme.setAttribute('aria-label','Tema escuro do centro de operações');theme.title='Tema escuro';theme.disabled=true;
+  document.querySelector('#tv').onclick=async()=>{const panel=document.querySelector('#painel');try{if(document.fullscreenElement)await document.exitFullscreen();else await panel.requestFullscreen();}catch{status.textContent='Tela cheia indisponível neste navegador.';}};
+  document.addEventListener('fullscreenchange',()=>document.querySelector('#painel').classList.toggle('tv',!!document.fullscreenElement));
+  document.querySelector('#fechar-dialog').onclick=()=>document.querySelector('#loja-dialog').close();
+  setInterval(()=>{document.querySelector('#live').textContent=updated?'Ao vivo · há '+Math.max(0,Math.floor((Date.now()-updated)/1000))+' s':'Conectando…';},1000);
+  refresh();
+ }
 }
-function descricaoSimples(value) {
-  const texto = value.trim();
-  const link = texto.match(/\bwan\s*([12])\b/i)?.[1];
-  const conexao = link ? 'A conexão de internet '+link+' da loja' : 'Uma conexão da loja';
-  if (/license not registered/i.test(texto)) return 'A licença do equipamento de rede da loja não foi cadastrada.';
-  if (/\brestarted\b|\brebooted\b/i.test(texto)) return 'O equipamento de rede da loja reiniciou.';
-  if (/\bunreachable\b|\(NoData\)/i.test(texto)) return 'O equipamento de rede da loja não responde ao monitoramento.';
-  if (/highpktloss|packet loss|pkt\s*loss/i.test(texto)) return conexao+' está perdendo dados.';
-  if (/\blatency\b/i.test(texto)) return conexao+' está lenta.';
-  if (/\bdown\b/i.test(texto)) return conexao+' está indisponível.';
-  return texto;
-}
-
-function problemText(node,value) {
-  const simple = descricaoSimples(value);
-  node.textContent = simple;
-  if (simple !== value) node.title = value;
-  return node;
-}
-
-
-function renderOldest(container,rows,category) {
-  if (!category) return;
-  const dated = rows.filter(row=>category.matches.includes(row.severidade.toLowerCase()))
-    .map(row=>({row,time:inicioTimestamp(row.horario)}));
-  const oldest = dated.filter(entry=>Number.isFinite(entry.time))
-    .sort((a,b)=>a.time-b.time).slice(0,5);
-  if (!oldest.length) {
-    container.replaceChildren(element('p',dated.length
-      ? 'Nenhum caso aberto com data de início disponível.'
-      : 'Nenhum caso aberto nesta prioridade.'));
-    return;
-  }
-  const list = element('ol',undefined,'oldest-list');
-  for (const {row} of oldest) {
-    const caseItem = element('li');
-    const description = element('div');
-    description.append(element('strong',row.loja),problemText(element('span',undefined,'case-problem'),row.problema));
-    caseItem.append(description,element('span',formatarInicio(row.horario),'case-start'));
-    list.append(caseItem);
-  }
-  container.replaceChildren(element('h3','Casos abertos mais antigos'),list);
-}
-
-
-function storeList(token,panelId,onUpdate) {
-  const section = document.querySelector('#ocorrencias');
-  if (!section) return;
-  section.hidden = false;
-  const feedback = section.querySelector('#status-ocorrencias');
-  const search = section.querySelector('input');
-  const tbody = section.querySelector('tbody');
-  const table = section.querySelector('.table-scroll');
-  const selected = severities.get(panelId);
-  let rows;
-  let fetchError = false;
-  let limited = false;
-
-  function renderStores() {
-    if (!rows) return;
-    const term = search.value.trim().toLocaleLowerCase('pt-BR');
-    const filtered = rows.filter(row => (!selected || selected.matches.includes(row.severidade.toLowerCase())) &&
-      (!term || [row.loja,row.host,row.problema,descricaoSimples(row.problema)].some(value => value.toLocaleLowerCase('pt-BR').includes(term))));
-    tbody.replaceChildren(...filtered.map(row=>{
-      const tr = document.createElement('tr');
-      const place = element('th',row.loja);
-      place.scope = 'row';
-      if (row.host) place.append(element('small',row.host,'codigo-loja'));
-      tr.append(place);
-      tr.insertCell().textContent = severityLabels[row.severidade.toLowerCase()] ?? (row.severidade || '—');
-      problemText(tr.insertCell(),row.problema);
-      tr.insertCell().textContent = formatarInicio(row.horario);
-      return tr;
-    }));
-    table.hidden = filtered.length === 0;
-    const count = new Set(filtered.map(row => row.host || row.loja)).size;
-    const summary = filtered.length
-      ? new Intl.NumberFormat('pt-BR').format(count) + (count === 1 ? ' loja · ' : ' lojas · ') + filtered.length +
-        (filtered.length === 1 ? ' ocorrência aberta.' : ' ocorrências abertas.')
-      : term ? 'Nenhuma loja corresponde à busca.' : 'Nenhuma ocorrência aberta para esta seleção.';
-    feedback.textContent = (fetchError ? 'Falha na atualização. Exibindo a última lista. ' : '') +
-      summary + (limited ? ' Exibindo até 500 ocorrências.' : '');
-  }
-  search.addEventListener('input',renderStores);
-  async function refreshStores() {
-    try {
-      const data = await api('/api/problemas',{headers:{Authorization:'Bearer '+token}});
-      if (!Array.isArray(data.ocorrencias)) throw new Error('Lista de ocorrências indisponível.');
-      rows = data.ocorrencias;
-      onUpdate?.(rows);
-      limited = data.limitado;
-      fetchError = false;
-      renderStores();
-    } catch (error) {
-      fetchError = true;
-      if (rows) renderStores();
-      else {
-        feedback.textContent = message(error);
-        onUpdate?.(null);
-      }
-    } finally {
-      setTimeout(refreshStores,REFRESH_SECONDS*1000);
-    }
-  }
-  refreshStores();
-}
-
-function setTheme() {
-  const mode = localStorage.getItem('dashhughes-theme') ?? (matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');
-  document.documentElement.dataset.theme = mode;
-  return mode;
-}
-
-if (panel) {
-  const token = sessionStorage.getItem(storageKey);
-  if (!token) signOut();
-  else {
-    const isDetail = panel.dataset.page === 'detalhe';
-    const requested = new URLSearchParams(location.search);
-    const id = requested.get('id') ?? '';
-    const content = document.querySelector('#cards');
-    const period = document.querySelector('#periodo');
-    const exit = document.querySelector('#sair');
-    const theme = document.querySelector('#tema');
-    const tv = document.querySelector('#tv');
-    let occurrences;
-    let lastData;
-    let lastUpdated;
-    let lastFailure = '';
-    let active;
-    let timer;
-    let rotation;
-    let view = 0;
-    const originPeriod = requested.get('from');
-    if (ranges.has(originPeriod)) period.value = originPeriod;
-    setTheme();
-    exit.hidden = false;
-    exit.addEventListener('click',signOut);
-    theme.hidden = false;
-    theme.addEventListener('click',() => {
-      localStorage.setItem('dashhughes-theme',setTheme()==='dark'?'light':'dark');
-      setTheme();
-      render();
-    });
-
-    function refreshStatus() {
-      if (!lastUpdated) {
-        document.querySelector('#atualizacao').textContent = '';
-        const text = lastFailure || 'Buscando dados…';
-        if (status.textContent !== text) status.textContent = text;
-        return;
-      }
-      const elapsed = Math.max(0,Math.floor((Date.now()-lastUpdated)/1000));
-      const updated = document.querySelector('#atualizacao');
-      updated.textContent = 'Atualizado há '+elapsed+' s.';
-      if (status.textContent !== lastFailure) status.textContent = lastFailure;
-    }
-    function render() {
-      if (!lastData) return;
-      disposeCharts();
-      if (isDetail) {
-        detailContent(lastData,content);
-        return;
-      }
-      const panels = lastData.paineis;
-      const tvActive = document.fullscreenElement === panel;
-      drawOverview(panels,!tvActive);
-      if (!panels.length) {
-        content.replaceChildren(element('p','Nenhum painel disponível.'));
-        return;
-      }
-      const shown = tvActive ? [panels[view % panels.length]] : panels;
-      const tiles = shown.map(data=>card(data,period.value,occurrences));
-      content.replaceChildren(...tiles.map(tile=>tile.node));
-      for (const tile of tiles) if (tile.canvas) draw(tile.canvas,tile.series,false);
-    }
-    if (tv && document.fullscreenEnabled) {
-      tv.hidden = false;
-      tv.addEventListener('click',async () => {
-        try {
-          if (document.fullscreenElement) await document.exitFullscreen();
-          else await panel.requestFullscreen();
-        } catch { status.textContent = 'Tela cheia indisponível no navegador.'; }
-      });
-      document.addEventListener('fullscreenchange',() => {
-        clearInterval(rotation);
-        view = 0;
-        if (document.fullscreenElement === panel) {
-          tv.textContent = 'Sair do modo TV';
-          rotation = setInterval(()=>{view++;render();},15_000);
-        } else tv.textContent = 'Modo TV';
-        render();
-      });
-    }
-    async function refresh() {
-      clearTimeout(timer);
-      active?.abort();
-      const current = new AbortController();
-      active = current;
-      try {
-        const route = isDetail?'/api/paineis/'+encodeURIComponent(id):'/api/resumo';
-        const data = await api(route+'?from='+encodeURIComponent(period.value)+'&to=now',{
-          headers:{Authorization:'Bearer '+token},
-          signal:AbortSignal.any([current.signal,AbortSignal.timeout(35_000)]),
-        });
-        if (current.signal.aborted) return;
-        const items = isDetail?[data]:data.paineis;
-        const failures = items.filter(item=>item.estado==='erro');
-        if (failures.length && failures.length === items.length && lastData) {
-          lastFailure = 'Consultas indisponíveis. Exibindo os últimos dados.';
-        } else {
-          // Em falhas parciais, preserva o último valor de cada painel afetado.
-          if (!isDetail && lastData) {
-            data.paineis = items.map(item => item.estado==='erro'
-              ? lastData.paineis.find(old=>old.id===item.id && old.estado==='ok') ?? item
-              : item);
-          }
-          lastData = data;
-          if (!failures.length || !lastUpdated) lastUpdated = data.atualizadoEm ? Date.parse(data.atualizadoEm) : Date.now();
-          lastFailure = failures.length ? 'Algumas consultas estão indisponíveis.' : '';
-          panel.hidden = false;
-          render();
-        }
-      } catch (error) {
-        if (!current.signal.aborted) lastFailure = message(error);
-      } finally {
-        if (!current.signal.aborted) {
-          panel.hidden = false;
-          refreshStatus();
-          timer = setTimeout(refresh,REFRESH_SECONDS * 1000);
-        }
-      }
-    }
-    period.addEventListener('change',() => {
-      lastData = undefined;
-      lastUpdated = undefined;
-      lastFailure = '';
-      disposeCharts();
-      content.replaceChildren();
-      if (!isDetail) drawOverview([],false);
-      refreshStatus();
-      refresh();
-    });
-    if (isDetail && !/^\d+$/.test(id)) {
-      panel.hidden = false;
-      status.textContent = 'Selecione um painel na página de monitoramento.';
-    } else {
-      storeList(token,isDetail ? Number(id) : null,isDetail ? undefined : rows=>{
-        occurrences = rows;
-        for (const cases of content.querySelectorAll('.priority-cases')) {
-          if (rows) renderOldest(cases,rows,severities.get(Number(cases.dataset.painel)));
-          else cases.replaceChildren(element('p','Lista de casos indisponível.'));
-        }
-      });
-      refresh();
-      setInterval(refreshStatus,1000);
-    }
-  }
-}
-
-
-
-
-
-
-
-
-
