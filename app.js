@@ -15,6 +15,17 @@ let charts=[],timer,activeRequest;
 const hiddenLines=new Set();
 const detail=document.querySelector('[data-detail]');
 const brandPage=document.querySelector('[data-brand]');
+const problemPage=document.querySelector('[data-problem]');
+const requestedProblem=params.get('problema')??'';
+let excludedProblems=[];
+try{
+ const value=JSON.parse(params.get('excluir')??'[]');
+ if(Array.isArray(value)&&value.length<=6&&value.every(item=>typeof item==='string'&&item.length<=500))excludedProblems=value;
+}catch{}
+const isOtherProblem=params.get('grupo')==='outros'&&excludedProblems.length>0;
+const matchesProblem=row=>isOtherProblem
+ ? !excludedProblems.includes(simple(row.problema))
+ : simple(row.problema)===requestedProblem;
 const requestedBrand=params.get('marca')??'';
 const brandLogos=new Map([
  ['FARM','farm.jpg'],['ANIMALE','animale.webp'],['NV','nv.webp'],['CAROL BASSI','carol-bassi.webp'],
@@ -126,11 +137,16 @@ function statCards(){
  }return grid;
 }
 function distribution(){
- const box=surface('distribution');const head=node('div',undefined,'panel-heading');head.append(heading('O que está acontecendo'),node('span',incidents.length+' ocorrências','subtext'));box.append(head);
+ const box=surface('distribution');box.id='tipos-problemas';const head=node('div',undefined,'panel-heading');head.append(heading('O que está acontecendo'),node('span',incidents.length+' ocorrências','subtext'));box.append(head);
  const grouped=new Map();for(const row of incidents){const key=simple(row.problema);grouped.set(key,(grouped.get(key)??0)+1);}
  const all=[...grouped].sort((a,b)=>b[1]-a[1]),top=all.slice(0,6);if(all.length>6)top.push(['Outros',all.slice(6).reduce((sum,row)=>sum+row[1],0)]);
  const list=node('div',undefined,'distribution-list'),maximum=top[0]?.[1]??1;
- for(const [name,count]of top){const item=node('div'),label=node('div',undefined,'distribution-line');label.append(node('span',name),node('strong',count));const track=node('div',undefined,'bar-track'),bar=node('div',undefined,'bar-fill');bar.style.width=count/maximum*100+'%';if(name.includes('Firewall'))bar.style.background='var(--medium)';track.append(bar);item.append(label,track);list.append(item);}
+ for(const [name,count]of top){const item=node('a',undefined,'problem-link');
+ item.href='./problema.html?v=13&'+(name==='Outros'
+  ? 'grupo=outros&excluir='+encodeURIComponent(JSON.stringify(all.slice(0,6).map(row=>row[0])))
+  : 'problema='+encodeURIComponent(name));
+ item.setAttribute('aria-label',name+' · '+count+' ocorrências');
+ const label=node('div',undefined,'distribution-line');label.append(node('span',name),node('strong',count));const track=node('div',undefined,'bar-track'),bar=node('div',undefined,'bar-fill');bar.style.width=count/maximum*100+'%';if(name.includes('Firewall'))bar.style.background='var(--medium)';track.append(bar);item.append(label,track);list.append(item);}
  box.append(list);return box;
 }
 function brandPanel(){
@@ -160,8 +176,8 @@ function searchControl(label,placeholder,callback){
  const box=node('div',undefined,'search'),input=node('input');const id='search-stores';input.id=id;input.type='search';input.value=query;input.placeholder=placeholder;
  const caption=node('label',label);caption.htmlFor=id;input.oninput=()=>{query=input.value;callback();};box.append(caption,input);return box;
 }
-function tablePanel(brandFilter){
- const source=rowsFor().filter(row=>!brandFilter||brand(row)===brandFilter);
+function tablePanel(brandFilter,problemFilter){
+ const source=rowsFor().filter(row=>(!brandFilter||brand(row)===brandFilter)&&(!problemFilter||problemFilter(row)));
  const box=surface('table-panel');box.id='ocorrencias';const toolbar=node('div',undefined,'table-toolbar'),title=node('div',undefined,'table-title');title.append(heading('Ocorrências abertas'));const tabs=node('div',undefined,'filter-tabs');title.append(tabs);
  const table=node('table'),thead=table.createTHead().insertRow();for(const label of ['Severidade','Loja','Problema','Aberto há','Início'])thead.append(node('th',label));
  const body=table.createTBody(),scroll=node('div',undefined,'table-scroll');scroll.append(table);const footer=node('div',undefined,'table-footer'),count=node('span'),more=node('button','Carregar mais','text-button');more.onclick=()=>{limit+=10;update();};footer.append(count,more);
@@ -208,19 +224,21 @@ function render(){
  const content=document.querySelector('#conteudo');content.replaceChildren();
  const subtitle=document.querySelector('#subtitulo'),title=document.querySelector('h1');
  const stores=new Set(incidents.map(row=>row.host||row.loja)).size;
- if(brandPage){
-  const valid=brandLogos.has(requestedBrand)||requestedBrand==='OUTRAS';
-  title.textContent=valid?'Casos da marca '+requestedBrand:'Marca não encontrada';
-  if(!valid){subtitle.textContent='Abra uma marca pela visão geral.';return;}
-  const rows=rowsFor().filter(row=>brand(row)===requestedBrand);
+ if(brandPage||problemPage){
+  const valid=problemPage
+   ? isOtherProblem||(requestedProblem.length>0&&requestedProblem.length<=500)
+   : brandLogos.has(requestedBrand)||requestedBrand==='OUTRAS';
+  title.textContent=problemPage ? (valid?(isOtherProblem?'Outros problemas':requestedProblem):'Problema não encontrado') : (valid?'Casos da marca '+requestedBrand:'Marca não encontrada');
+  if(!valid){subtitle.textContent='Selecione um item pela visão geral.';return;}
+  const rows=rowsFor().filter(row=>problemPage?matchesProblem(row):brand(row)===requestedBrand);
   subtitle.textContent=new Set(rows.map(row=>row.host||row.loja)).size+' lojas afetadas · '+rows.length+' ocorrências abertas';
   let back=document.querySelector('.back');
-  if(!back){back=node('a','‹ Visão geral','back');back.href='./?v=11#lojas';document.querySelector('.page-heading').before(back);}
+  if(!back){back=node('a','‹ Visão geral','back');back.href=problemPage?'./?v=13#tipos-problemas':'./?v=13#lojas';document.querySelector('.page-heading').before(back);}
   const summary=node('div',undefined,'brand-summary');
   for(const [label,value]of [['Ocorrências abertas',rows.length],['Lojas afetadas',new Set(rows.map(row=>row.host||row.loja)).size],['Caso mais antigo',rows.length?age(rows[0]):'—']]){
     const card=surface('detail-kpi');card.append(node('p',label),node('strong',value));summary.append(card);
   }
-  content.append(summary,tablePanel(requestedBrand));
+  content.append(summary,tablePanel(problemPage?undefined:requestedBrand,problemPage?matchesProblem:undefined));
  }else if(detail){
   if(!category){title.textContent='Prioridade indisponível';return;}
   title.textContent=category.title;subtitle.textContent='Ocorrências abertas nas lojas desta prioridade';
@@ -250,7 +268,7 @@ async function refresh(){
 if(!login){
  if(!sessionStorage.getItem(sessionKey))out();
  else{
-  if(brandPage)document.querySelector('#periods').hidden=true;else periodControls();document.querySelector('#sair').onclick=out;
+  if(brandPage||problemPage)document.querySelector('#periods').hidden=true;else periodControls();document.querySelector('#sair').onclick=out;
   document.querySelector('#conta').onclick=event=>{const button=document.querySelector('#sair');button.hidden=!button.hidden;event.currentTarget.setAttribute('aria-expanded',String(!button.hidden));};
   const theme=document.querySelector('#tema');theme.setAttribute('aria-label','Tema escuro do centro de operações');theme.title='Tema escuro';theme.disabled=true;
   document.querySelector('#tv').onclick=async()=>{const panel=document.querySelector('#painel');try{if(document.fullscreenElement)await document.exitFullscreen();else await panel.requestFullscreen();}catch{status.textContent='Tela cheia indisponível neste navegador.';}};
@@ -268,6 +286,7 @@ if(!login){
   refresh();
  }
 }
+
 
 
 
