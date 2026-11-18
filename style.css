@@ -29,3 +29,8 @@ header .brand{flex-shrink:0}
 .problem-link{display:block;color:var(--text);border-radius:5px;padding:5px;margin:-5px;transition:background .15s}
 .problem-link:hover,.problem-link:focus-visible{background:#1b2c39}
 .problem-link:hover .distribution-line span{text-decoration:underline;text-underline-offset:3px}
+.store-row{grid-template-columns:minmax(200px,1fr) minmax(180px,1.25fr) 80px auto}
+.store-problem{color:var(--text);font-size:12px;line-height:1.5;overflow-wrap:anywhere}
+.store-duration{white-space:nowrap}
+@media(max-width:900px){.store-row{grid-template-columns:minmax(150px,1fr) minmax(150px,1.25fr) 80px}}
+@media(max-width:600px){.store-row{grid-template-columns:minmax(0,1fr) 80px}.store-name{grid-column:1}.store-problem{grid-column:1;grid-row:2}.store-duration{grid-column:2;grid-row:1/3}.store-buttons{grid-column:1/-1}}

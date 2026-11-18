@@ -207,12 +207,13 @@ function detailStores(){
  const list=node('div'),feedback=node('p',undefined,'subtext');feedback.setAttribute('role','status');
  function update(){
   const term=query.toLowerCase().trim(),all=rowsFor(category);const rows=all.filter(row=>!term||[row.loja,row.host,row.problema,simple(row.problema)].some(value=>value.toLowerCase().includes(term)));
-  const max=Math.max(1,...all.map(row=>Date.now()-timestamp(row.horario)));list.replaceChildren();
+  list.replaceChildren();
   for(const row of rows){const item=colored(node('div',undefined,'store-row'),category),name=node('div',undefined,'store-name');name.append(node('strong',storeName(row)),node('small',row.host+' · '+brand(row)+' · desde '+started(row)));
-   const track=node('div',undefined,'bar-track'),bar=node('div',undefined,'bar-fill');bar.style.background=category.color;bar.style.width=Math.max(2,(Date.now()-timestamp(row.horario))/max*100)+'%';track.append(bar);
+   const problem=node('p',simple(row.problema),'store-problem');problem.title=row.problema;
+   const elapsed=age(row).replace(/\bd$/,'dias').replace(/\bh$/,'horas').replace(/\bmin$/,'minutos');
    const actions=node('div',undefined,'store-buttons'),copy=node('button','Copiar dados','quiet'),view=node('button','Ver loja','quiet');
    copy.onclick=async()=>{try{await navigator.clipboard.writeText([storeName(row),row.host,simple(row.problema),'Início: '+started(row)].join('\n'));feedback.textContent='Dados da loja copiados.';}catch{feedback.textContent='Não foi possível copiar. Abra Ver loja para consultar os dados.';}};
-   view.onclick=()=>showStore(row);actions.append(copy,view);item.append(name,track,node('span',age(row),'store-duration'),actions);list.append(item);
+   view.onclick=()=>showStore(row);actions.append(copy,view);item.append(name,problem,node('span',elapsed,'store-duration'),actions);list.append(item);
   }
   if(!rows.length)list.append(node('p','Nenhuma ocorrência encontrada.','empty'));
  }
@@ -286,6 +287,7 @@ if(!login){
   refresh();
  }
 }
+
 
 
 
