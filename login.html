@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://dashhughes.adirck-sites.workers.dev; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>DashHughes | Entrar</title>
+<link rel="stylesheet" href="./style.css">
+<script type="module" src="./app.js"></script>
+<header><a class="brand" href="./">Dash<span>Hughes</span></a></header>
+<main class="login">
+  <form id="login" class="card" method="post">
+    <h1>Entrar</h1>
+    <label for="user">Usuário</label><input id="user" name="user" autocomplete="username" maxlength="128" required>
+    <label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required>
+    <button type="submit">Entrar</button>
+    <p id="status" role="status"></p>
+  </form>
+</main>
+</html>
+
+
