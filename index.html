@@ -6,7 +6,7 @@
 <title>DashHughes | Monitoramento</title>
 <link rel="stylesheet" href="./style.css?v=2">
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
-<script type="module" src="./app.js?v=2"></script>
+<script type="module" src="./app.js?v=3"></script>
 <header><a class="brand" href="./">Dash<span>Hughes</span></a><div class="controls"><button id="tema" class="quiet" hidden>Alternar tema</button><button id="sair" class="quiet" hidden>Sair</button></div></header>
 <main>
   <section id="painel" hidden>
@@ -23,7 +23,7 @@
         <input id="buscar-loja" type="search" placeholder="Nome, código ou problema">
       </div>
       <div class="table-scroll" hidden>
-        <table><thead><tr><th scope="col">Loja</th><th scope="col">Severidade</th><th scope="col">Problema</th><th scope="col">Início</th></tr></thead>
+        <table><thead><tr><th scope="col">Loja</th><th scope="col">Severidade</th><th scope="col">Problema</th><th scope="col">Início do problema</th></tr></thead>
           <tbody></tbody></table>
       </div>
     </section>
@@ -31,6 +31,7 @@
   </section>
 </main>
 </html>
+
 
 
 

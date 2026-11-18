@@ -109,7 +109,7 @@ function canvasFor(title,large = false) {
 function card(data,period) {
   const node = element('article',undefined,'card');
   const link = element('a',headingFor(data));
-  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period)+'&v=2';
+  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period)+'&v=3';
   const heading = element('h2');
   heading.append(link);
   node.append(heading);
@@ -164,6 +164,17 @@ const severityLabels = {'0':'Sem classificação','1':'Informativa','2':'Aviso',
   warning:'Aviso',warn:'Aviso',information:'Informativa',info:'Informativa', 'not classified':'Sem classificação'};
 const headingFor = data => severities.get(data.id)?.titulo ?? data.titulo;
 
+const inicioFormatter = new Intl.DateTimeFormat('pt-BR',{
+  timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'medium',
+});
+function formatarInicio(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '—';
+  if (/^\d{10}$/.test(text)) return inicioFormatter.format(Number(text)*1000);
+  if (/^\d{13}$/.test(text)) return inicioFormatter.format(Number(text));
+  return text;
+}
+
 function storeList(token,panelId) {
   const section = document.querySelector('#ocorrencias');
   if (!section) return;
@@ -190,7 +201,7 @@ function storeList(token,panelId) {
       tr.append(place);
       tr.insertCell().textContent = severityLabels[row.severidade.toLowerCase()] ?? (row.severidade || '—');
       tr.insertCell().textContent = row.problema;
-      tr.insertCell().textContent = row.horario || '—';
+      tr.insertCell().textContent = formatarInicio(row.horario);
       return tr;
     }));
     table.hidden = filtered.length === 0;
@@ -374,6 +385,7 @@ if (panel) {
     }
   }
 }
+
 
 
 
