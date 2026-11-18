@@ -109,7 +109,7 @@ function canvasFor(title,large = false) {
 function card(data,period) {
   const node = element('article',undefined,'card');
   const link = element('a',headingFor(data));
-  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period);
+  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period)+'&v=2';
   const heading = element('h2');
   heading.append(link);
   node.append(heading);
@@ -154,13 +154,13 @@ function detailContent(data,container) {
 }
 
 const severities = new Map([
-  [51,{titulo:'Problemas críticos',matches:['disaster','critical']}],
-  [53,{titulo:'Problemas de severidade alta',matches:['high']}],
-  [55,{titulo:'Problemas de severidade média',matches:['average','medium']}],
-  [14,{titulo:'Avisos',matches:['warning','warn']}],
-  [52,{titulo:'Ocorrências informativas',matches:['information','info']}],
+  [51,{titulo:'Problemas críticos',matches:['5','disaster','critical']}],
+  [53,{titulo:'Problemas de severidade alta',matches:['4','high']}],
+  [55,{titulo:'Problemas de severidade média',matches:['3','average','medium']}],
+  [14,{titulo:'Avisos',matches:['2','warning','warn']}],
+  [52,{titulo:'Ocorrências informativas',matches:['1','information','info']}],
 ]);
-const severityLabels = {disaster:'Crítica',critical:'Crítica',high:'Alta',average:'Média',medium:'Média',
+const severityLabels = {'0':'Sem classificação','1':'Informativa','2':'Aviso','3':'Média','4':'Alta','5':'Crítica',disaster:'Crítica',critical:'Crítica',high:'Alta',average:'Média',medium:'Média',
   warning:'Aviso',warn:'Aviso',information:'Informativa',info:'Informativa', 'not classified':'Sem classificação'};
 const headingFor = data => severities.get(data.id)?.titulo ?? data.titulo;
 
@@ -374,6 +374,7 @@ if (panel) {
     }
   }
 }
+
 
 
 
