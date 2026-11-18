@@ -69,16 +69,11 @@ th,td{text-align:left;padding:.6rem .4rem;border-bottom:1px solid var(--border)}
 .priority-head h2{margin-bottom:.5rem}
 .priority-head .chart{margin:0;height:3.65rem}
 .priority-head h2 a,.priority-title{color:var(--priority-color,var(--text))}
-.priority-critical{--priority-color:#e990a0}
-.priority-high{--priority-color:#ff777e}
-.priority-medium{--priority-color:#f3d468}
-.priority-warning{--priority-color:#ffad72}
-.priority-info{--priority-color:#82baff}
-[data-theme=light] .priority-critical{--priority-color:#8b2945}
-[data-theme=light] .priority-high{--priority-color:#ad2030}
-[data-theme=light] .priority-medium{--priority-color:#806000}
-[data-theme=light] .priority-warning{--priority-color:#a64913}
-[data-theme=light] .priority-info{--priority-color:#215ba7}
+.priority-critical{--priority-color:var(--chart-critical)}
+.priority-high{--priority-color:var(--chart-high)}
+.priority-medium{--priority-color:var(--chart-medium)}
+.priority-warning{--priority-color:var(--chart-warning)}
+.priority-info{--priority-color:var(--chart-info)}
 .priority-cases{border-top:1px solid var(--border);margin-top:.7rem;padding-top:.75rem}
 .priority-cases h3{font-size:.92rem;margin:0 0 .2rem}
 .priority-cases p{margin-bottom:0}
@@ -88,4 +83,19 @@ th,td{text-align:left;padding:.6rem .4rem;border-bottom:1px solid var(--border)}
 .case-problem{display:block;color:var(--muted);font-size:.86rem;margin-top:.15rem}
 .case-start{white-space:nowrap;font-size:.85rem;font-variant-numeric:tabular-nums;color:var(--text)}
 @media(max-width:520px){.priority-head{grid-template-columns:1fr}.oldest-list li{grid-template-columns:1fr}.case-start{white-space:normal}}
+
+
+:root{
+  --chart-critical:#e990a0;--chart-high:#ff777e;--chart-medium:#f3d468;
+  --chart-warning:#ffad72;--chart-info:#82baff;
+}
+:root[data-theme=light]{
+  --chart-critical:#8b2945;--chart-high:#ad2030;--chart-medium:#806000;
+  --chart-warning:#a64913;--chart-info:#215ba7;
+}
+.evolution{margin-bottom:1rem}
+.evolution h2{margin-bottom:.5rem;font-size:1.25rem}
+.overview-chart{height:clamp(17rem,40vw,25rem)}
+.evolution p:empty{display:none}
+
 

@@ -69,25 +69,81 @@ function disposeCharts() {
   for (const chart of charts.values()) chart.destroy();
   charts.clear();
 }
-function draw(canvas,series,detail) {
+const graphDate = new Intl.DateTimeFormat('pt-BR',{
+  timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23',
+});
+const hiddenPriorities = new Set();
+
+function draw(canvas,series,detail,overview=false) {
   if (!window.Chart || !series.some(row => row.historico?.length)) return;
   const colors = ['#51b99b','#729ee9','#d79048','#b781d2','#70b9c1'];
-  const data = {datasets:series.filter(row => row.historico?.length).map((row,i) => ({
-    label:row.nome,borderColor:colors[i%colors.length],backgroundColor:colors[i%colors.length],
-    data:row.historico.map(([x,y])=>({x,y})),pointRadius:detail?2:0,borderWidth:2,stepped:true,
-  }))};
-  const foreground = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
+  const theme = getComputedStyle(canvas);
+  const foreground = theme.getPropertyValue('--text').trim();
+  const grid = theme.getPropertyValue('--border').trim();
+  const points = series.filter(row=>row.historico?.length);
+  const data = {datasets:points.map((row,i)=>{
+    const color = row.cor ? theme.getPropertyValue('--chart-'+row.cor).trim() || colors[i%colors.length] : colors[i%colors.length];
+    return {
+      label:row.nome,borderColor:color,backgroundColor:color,
+      data:row.historico.map(([x,y])=>({x,y})),pointRadius:detail && row.historico.length === 1?4:0,
+      pointHoverRadius:5,borderWidth:2,stepped:true,
+      hidden:overview && hiddenPriorities.has(row.nome),
+    };
+  })};
   const chart = new window.Chart(canvas,{
     type:'line',data,
-    options:{...chartOptions,parsing:false,
-      scales:{x:{type:'linear',display:detail,ticks:{maxTicksLimit:6,color:foreground,callback:value=>clock.format(value)}},
-        y:{display:detail,ticks:{color:foreground,precision:0}}},
-      plugins:{legend:{display:detail,labels:{color:foreground}},tooltip:{enabled:detail,
-        callbacks:{title:items=>clock.format(items[0].parsed.x)}}},
+    options:{...chartOptions,parsing:false,interaction:{mode:'nearest',axis:'x',intersect:false},
+      scales:{
+        x:{type:'linear',display:detail,grid:{color:grid},
+          title:{display:detail,text:'Data e hora (Brasília)',color:foreground},
+          ticks:{maxTicksLimit:6,color:foreground,callback:value=>graphDate.format(value)}},
+        y:{display:detail,beginAtZero:true,grid:{color:grid},
+          title:{display:detail,text:'Número de problemas',color:foreground},
+          ticks:{color:foreground,precision:0}},
+      },
+      plugins:{legend:{display:detail,labels:{color:foreground,usePointStyle:true,boxWidth:10},
+        ...(overview ? {onClick:(_event,item,legend)=>{
+          const chart = legend.chart;
+          const index = item.datasetIndex;
+          const visible = chart.isDatasetVisible(index);
+          if (visible) hiddenPriorities.add(item.text);
+          else hiddenPriorities.delete(item.text);
+          chart.setDatasetVisibility(index,!visible);
+          chart.update();
+        }} : {})},
+        tooltip:{enabled:detail,callbacks:{
+          title:items=>inicioFormatter.format(items[0].parsed.x),
+          label:item=>item.dataset.label+': '+number.format(item.parsed.y),
+        }},
+      },
     },
   });
   charts.set(canvas,chart);
 }
+
+function drawOverview(panels,visible) {
+  const section = document.querySelector('#evolucao');
+  if (!section) return;
+  section.hidden = !visible;
+  if (!visible) return;
+  const message = section.querySelector('#evolucao-status');
+  const wrap = section.querySelector('.overview-chart');
+  const series = panels.flatMap(panel=>{
+    if (panel.estado !== 'ok') return [];
+    const category = severities.get(panel.id);
+    return panel.series.filter(row=>row.historico?.length).map(row=>({
+      ...row,cor:category?.cor,nome:panel.series.length===1 ? headingFor(panel) : headingFor(panel)+' · '+row.nome,
+    }));
+  });
+  wrap.hidden = !series.length || !window.Chart;
+  if (wrap.hidden) {
+    message.textContent = series.length ? 'Gráfico indisponível neste navegador.' : 'Sem dados históricos no período selecionado.';
+    return;
+  }
+  message.textContent = '';
+  draw(wrap.querySelector('canvas'),series,true,true);
+}
+
 
 function valueLabel(value,unit) {
   return number.format(value)+(unit && unit !== 'none' ? ' '+unit : '');
@@ -113,7 +169,7 @@ function card(data,period,occurrences) {
   const head = element('div',undefined,'priority-head');
   const info = element('div');
   const link = element('a',headingFor(data));
-  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period)+'&v=5';
+  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period)+'&v=6';
   const heading = element('h2');
   heading.append(link);
   info.append(heading);
@@ -168,7 +224,7 @@ function detailContent(data,container) {
   scroll.append(table);
   const hasHistory = data.series.some(row => row.historico?.length);
   container.replaceChildren(...(hasHistory && window.Chart?[wrap,scroll]:[scroll]));
-  if (hasHistory) draw(canvas,data.series,true);
+  if (hasHistory) draw(canvas,data.series.map(row=>({...row,cor:category?.cor,nome:data.series.length===1?headingFor(data):row.nome})),true);
 }
 
 const severities = new Map([
@@ -368,11 +424,12 @@ if (panel) {
         return;
       }
       const panels = lastData.paineis;
+      const tvActive = document.fullscreenElement === panel;
+      drawOverview(panels,!tvActive);
       if (!panels.length) {
         content.replaceChildren(element('p','Nenhum painel disponível.'));
         return;
       }
-      const tvActive = document.fullscreenElement === panel;
       const shown = tvActive ? [panels[view % panels.length]] : panels;
       const tiles = shown.map(data=>card(data,period.value,occurrences));
       content.replaceChildren(...tiles.map(tile=>tile.node));
@@ -441,6 +498,7 @@ if (panel) {
       lastFailure = '';
       disposeCharts();
       content.replaceChildren();
+      if (!isDetail) drawOverview([],false);
       refreshStatus();
       refresh();
     });
@@ -460,6 +518,7 @@ if (panel) {
     }
   }
 }
+
 
 
 
