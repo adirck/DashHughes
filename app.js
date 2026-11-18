@@ -34,7 +34,7 @@ if(login){
   event.preventDefault();const button=login.querySelector('button');button.disabled=true;
   try{
    const data=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:login.elements.user.value,password:login.elements.password.value})});
-   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=8');
+   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=9');
   }catch(error){status.textContent=error.message;}finally{button.disabled=false;login.elements.password.value='';}
  });
 }
@@ -66,7 +66,7 @@ function simple(value){
  return text;
 }
 function brand(row){
- const text=row.loja.toUpperCase();
+ const text=row.loja.toUpperCase().replaceAll('_',' ');
  return ['CAROL BASSI','CRIS BARROS','MARIAFILO','MARIA FILO','ANIMALE','FOXTON','FABULA','FARM','BYNV','NV','OFF PREMIUM'].find(name=>text.includes(name))?.replace('MARIAFILO','MARIA FILÓ').replace('MARIA FILO','MARIA FILÓ').replace('BYNV','NV')??'OUTRAS';
 }
 function storeName(row){return row.loja.replace(/\s*\(\s*firewall\s*\)\s*/ig,'').replaceAll('_',' ').replace(/\s+/g,' ').trim();}
@@ -90,7 +90,7 @@ function plot(canvas,series,spark=false){
   label:item.label,data:item.points.map(([x,y])=>({x,y})),borderColor:item.color,backgroundColor:item.color+'20',
   fill:!spark,stepped:true,borderWidth:spark?1.5:2,pointRadius:0,pointHoverRadius:4,hidden:hiddenLines.has(item.label),
  }))},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,interaction:{mode:'nearest',axis:'x',intersect:false},
- scales:{x:{type:'linear',display:!spark,grid:{display:false},border:{display:false},ticks:{color:'#8195ab',font:{size:10,family:'Consolas'},maxTicksLimit:period==='now-30d'?12:6,
+ scales:{x:{type:'linear',min:Math.min(...series.flatMap(item=>item.points.map(point=>point[0]))),max:Date.now(),display:!spark,grid:{display:false},border:{display:false},ticks:{color:'#8195ab',font:{size:10,family:'Consolas'},maxTicksLimit:period==='now-30d'?12:6,
  callback:value=>period==='now-30d'?dates.format(value).split(',')[0]:dates.format(value).split(',').at(-1)}},
  y:{display:!spark,beginAtZero:true,border:{display:false},grid:{color:'#22313e'},ticks:{color:'#8195ab',precision:0,maxTicksLimit:6,font:{size:10,family:'Consolas'}}}},
  plugins:{legend:{display:!spark&&series.length>1,position:'top',align:'end',labels:{color:'#aebdcc',boxWidth:10,boxHeight:2,font:{size:10}},
@@ -110,7 +110,7 @@ function chartPanel(cat){
 function statCards(){
  const grid=node('div',undefined,'stats-grid');grid.id='alertas';
  for(const cat of categories){
-  const card=colored(node('a',undefined,'stat-card'),cat);card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=8';
+  const card=colored(node('a',undefined,'stat-card'),cat);card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=9';
   const label=node('div',undefined,'stat-label');label.append(node('span',undefined,'dot'),node('span',cat.short));
   const value=panelValue(cat),metric=node('div',undefined,'stat-value'+(value===0?' zero':''));metric.append(node('strong',value===null?'—':format.format(value)));
   const spark=node('div',undefined,'spark'),canvas=node('canvas');spark.append(canvas);metric.append(spark);
@@ -194,7 +194,7 @@ function render(){
  if(detail){
   if(!category){title.textContent='Prioridade indisponível';return;}
   title.textContent=category.title;subtitle.textContent='Ocorrências abertas nas lojas desta prioridade';
-  let back=document.querySelector('.back');if(!back){back=node('a','‹ Visão geral','back');back.href='./?from='+period+'&v=8';document.querySelector('.page-heading').before(back);}
+  let back=document.querySelector('.back');if(!back){back=node('a','‹ Visão geral','back');back.href='./?from='+period+'&v=9';document.querySelector('.page-heading').before(back);}
   const titleBox=title.parentElement;if(!titleBox.parentElement.classList.contains('detail-title')){const wrapper=colored(node('div',undefined,'detail-title'),category);titleBox.before(wrapper);wrapper.append(node('span','⚠','detail-icon'),titleBox);}
   const rows=rowsFor(category),top=node('div',undefined,'detail-top'),kpis=node('div',undefined,'detail-kpis');
   const counts=[['Ocorrências agora',panelValue(category)??rows.length],['Lojas afetadas',new Set(rows.map(row=>row.host||row.loja)).size],['Mais antiga',rows.length?age(rows[0]):'—'],['Mais recente',rows.length?age(rows.at(-1)):'—']];
@@ -225,8 +225,17 @@ if(!login){
   const theme=document.querySelector('#tema');theme.setAttribute('aria-label','Tema escuro do centro de operações');theme.title='Tema escuro';theme.disabled=true;
   document.querySelector('#tv').onclick=async()=>{const panel=document.querySelector('#painel');try{if(document.fullscreenElement)await document.exitFullscreen();else await panel.requestFullscreen();}catch{status.textContent='Tela cheia indisponível neste navegador.';}};
   document.addEventListener('fullscreenchange',()=>document.querySelector('#painel').classList.toggle('tv',!!document.fullscreenElement));
+  document.querySelector('.nav a[href$="#links"]').onclick=event=>{
+    event.preventDefault();
+    const content=document.querySelector('#loja-conteudo');content.replaceChildren(heading('Links do monitoramento'));
+    for(const [label,url]of [['Visão geral','./?v=9'],['Lojas e ocorrências','./?v=9#ocorrencias'],['Histórico dos problemas','./?v=9#historico']]){
+      const link=node('a',label,'dialog-case');link.href=url;link.style.display='block';content.append(link);
+    }
+    document.querySelector('#loja-dialog').showModal();
+  };
   document.querySelector('#fechar-dialog').onclick=()=>document.querySelector('#loja-dialog').close();
   setInterval(()=>{document.querySelector('#live').textContent=updated?'Ao vivo · há '+Math.max(0,Math.floor((Date.now()-updated)/1000))+' s':'Conectando…';},1000);
   refresh();
  }
 }
+
