@@ -136,6 +136,51 @@ function statCards(){
   card.append(label,metric,node('p',caption,'stat-caption'));grid.append(card);queueMicrotask(()=>plot(canvas,lineSeries(cat),true));
  }return grid;
 }
+function showProblemList(name,rows){
+ const dialog=document.querySelector('#loja-dialog'),content=document.querySelector('#loja-conteudo');
+ const title=heading('Lista para a Hughes — '+name);
+ title.id='titulo-lista-hughes';
+ dialog.setAttribute('aria-labelledby',title.id);
+ const instructions=node('p','Você pode ajustar a mensagem antes de copiar.','subtext');
+ const label=node('label','Mensagem para copiar','message-label');
+ label.htmlFor='mensagem-hughes';
+ const message=node('textarea',undefined,'hughes-message');
+ message.id='mensagem-hughes';message.rows=14;message.spellcheck=false;
+ const entries=rows.map((row,index)=>[
+  (index+1)+'. Loja: '+storeName(row),
+  'Código: '+(row.host||'Não informado'),
+  'Problema: '+simple(row.problema),
+ ].join('\n'));
+ message.value=[
+  'Olá, equipe Hughes.',
+  '',
+  'Solicitamos a verificação dos casos abaixo.',
+  'Tipo de ocorrência: '+name,
+  'Levantamento em '+fullDates.format(Date.now())+' (horário de Brasília).',
+  'Total: '+rows.length+(rows.length===1?' ocorrência.':' ocorrências.'),
+  '',
+  entries.join('\n\n'),
+ ].join('\n');
+ const copy=node('button','Copiar mensagem','primary');
+ copy.type='button';
+ const feedback=node('p',undefined,'subtext');
+ feedback.setAttribute('role','status');
+ copy.onclick=async()=>{
+  try{
+   await navigator.clipboard.writeText(message.value);
+   feedback.textContent='Mensagem copiada.';
+  }catch{
+   message.focus();message.select();
+   feedback.textContent='Texto selecionado. Use Ctrl+C ou a opção Copiar do seu dispositivo.';
+  }
+ };
+ message.addEventListener('input',()=>{feedback.textContent='';});
+ const footer=node('div',undefined,'message-footer');footer.append(copy,feedback);
+ content.replaceChildren(title,instructions,label,message,footer);
+ dialog.showModal();
+}
+
+
 function distribution(){
  const box=surface('distribution');box.id='tipos-problemas';const head=node('div',undefined,'panel-heading');head.append(heading('O que está acontecendo'),node('span',incidents.length+' ocorrências','subtext'));box.append(head);
  const grouped=new Map();for(const row of incidents){const key=simple(row.problema);grouped.set(key,(grouped.get(key)??0)+1);}
@@ -151,7 +196,15 @@ function distribution(){
   ? 'grupo=outros&excluir='+encodeURIComponent(JSON.stringify(all.slice(0,6).map(row=>row[0])))
   : 'problema='+encodeURIComponent(name));
  item.setAttribute('aria-label',name+' · '+count+' ocorrências');
- const label=node('div',undefined,'distribution-line');label.append(node('span',name),node('strong',count));const track=node('div',undefined,'bar-track'),bar=node('div',undefined,'bar-fill');bar.style.width=count/maximum*100+'%';if(name.includes('Firewall'))bar.style.background='var(--medium)';track.append(bar);item.append(label,track);list.append(item);}
+ const label=node('div',undefined,'distribution-line');label.append(node('span',name),node('strong',count));const track=node('div',undefined,'bar-track'),bar=node('div',undefined,'bar-fill');bar.style.width=count/maximum*100+'%';if(name.includes('Firewall'))bar.style.background='var(--medium)';track.append(bar);item.append(label,track);
+ const line=node('div',undefined,'problem-action-row'),generate=node('button','Gerar lista','quiet generate-list');
+ generate.type='button';generate.setAttribute('aria-label','Gerar lista de '+name);
+ generate.onclick=()=>{
+  const excluded=all.slice(0,6).map(row=>row[0]);
+  const rows=rowsFor().filter(row=>name==='Outros'?!excluded.includes(simple(row.problema)):simple(row.problema)===name);
+  showProblemList(name,rows);
+ };
+ line.append(item,generate);list.append(line);}
  box.append(list);return box;
 }
 function brandPanel(){
@@ -292,6 +345,7 @@ if(!login){
   refresh();
  }
 }
+
 
 
 
