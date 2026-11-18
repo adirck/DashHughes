@@ -6,13 +6,13 @@
 <title>DashHughes | Detalhe</title>
 <link rel="stylesheet" href="./style.css?v=6">
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
-<script type="module" src="./app.js?v=6"></script>
+<script type="module" src="./app.js?v=7"></script>
 <header><a class="brand" href="./">Dash<span>Hughes</span></a><div class="controls"><button id="tema" class="quiet" hidden>Alternar tema</button><button id="sair" class="quiet" hidden>Sair</button></div></header>
 <main>
   <section id="painel" data-page="detalhe" hidden>
     <a class="back" href="./">Voltar ao monitoramento</a>
     <div class="toolbar"><div><h1>Detalhe do painel</h1><p id="atualizacao"></p><p id="status" role="status">Carregando…</p></div>
-    <div class="controls"><label>Período <select id="periodo"><option value="now-15m">15 minutos</option><option value="now-1h" selected>1 hora</option><option value="now-6h">6 horas</option><option value="now-24h">24 horas</option></select></label></div></div>
+    <div class="controls"><label>Período <select id="periodo"><option value="now-15m">15 minutos</option><option value="now-1h">1 hora</option><option value="now-6h">6 horas</option><option value="now-24h">24 horas</option><option value="now-30d" selected>Últimos 30 dias</option></select></label></div></div>
     
     <div id="cards" class="card"></div>
     <section id="ocorrencias" class="occurrences card" aria-labelledby="titulo-ocorrencias" hidden>
@@ -31,6 +31,7 @@
   </section>
 </main>
 </html>
+
 
 
 

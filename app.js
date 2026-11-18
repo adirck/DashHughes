@@ -7,7 +7,7 @@ const panel = document.querySelector('#painel');
 const number = new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
 const clock = new Intl.DateTimeFormat('pt-BR',{timeStyle:'short'});
 const charts = new Map();
-const ranges = new Set(['now-15m','now-1h','now-6h','now-24h']);
+const ranges = new Set(['now-15m','now-1h','now-6h','now-24h','now-30d']);
 const chartOptions = {responsive:true,maintainAspectRatio:false,animation:false};
 const states = {erro:'Consulta temporariamente indisponível.',sem_dados:'Sem dados no período.',consulta_indisponivel:'Consulta indisponível para o portal.'};
 const levels = {verde:'Normal',amarelo:'Atenção',vermelho:'Crítico',limite:'Limite atingido'};
@@ -95,8 +95,8 @@ function draw(canvas,series,detail,overview=false) {
     options:{...chartOptions,parsing:false,interaction:{mode:'nearest',axis:'x',intersect:false},
       scales:{
         x:{type:'linear',display:detail,grid:{color:grid},
-          title:{display:detail,text:'Data e hora (Brasília)',color:foreground},
-          ticks:{maxTicksLimit:6,color:foreground,callback:value=>graphDate.format(value)}},
+          title:{display:detail,text:'Data (Brasília)',color:foreground},
+          ticks:{maxTicksLimit:15,color:foreground,callback:value=>new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit'}).format(value)}},
         y:{display:detail,beginAtZero:true,grid:{color:grid},
           title:{display:detail,text:'Número de problemas',color:foreground},
           ticks:{color:foreground,precision:0}},
@@ -140,7 +140,7 @@ function drawOverview(panels,visible) {
     message.textContent = series.length ? 'Gráfico indisponível neste navegador.' : 'Sem dados históricos no período selecionado.';
     return;
   }
-  message.textContent = '';
+  message.textContent = document.querySelector('#periodo')?.value === 'now-30d' ? 'Média de problemas em cada metade do dia · até 2 pontos por dia.' : '';
   draw(wrap.querySelector('canvas'),series,true,true);
 }
 
@@ -169,7 +169,7 @@ function card(data,period,occurrences) {
   const head = element('div',undefined,'priority-head');
   const info = element('div');
   const link = element('a',headingFor(data));
-  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period)+'&v=6';
+  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period)+'&v=7';
   const heading = element('h2');
   heading.append(link);
   info.append(heading);
@@ -518,6 +518,7 @@ if (panel) {
     }
   }
 }
+
 
 
 

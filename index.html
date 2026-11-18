@@ -6,13 +6,13 @@
 <title>DashHughes | Monitoramento</title>
 <link rel="stylesheet" href="./style.css?v=6">
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
-<script type="module" src="./app.js?v=6"></script>
+<script type="module" src="./app.js?v=7"></script>
 <header><a class="brand" href="./">Dash<span>Hughes</span></a><div class="controls"><button id="tema" class="quiet" hidden>Alternar tema</button><button id="sair" class="quiet" hidden>Sair</button></div></header>
 <main>
   <section id="painel" hidden>
     
     <div class="toolbar"><div><h1>Monitoramento</h1><p id="atualizacao"></p><p id="status" role="status">Carregando…</p></div>
-    <div class="controls"><label>Período <select id="periodo"><option value="now-15m">15 minutos</option><option value="now-1h" selected>1 hora</option><option value="now-6h">6 horas</option><option value="now-24h">24 horas</option></select></label><button id="tv" class="quiet" hidden>Modo TV</button></div></div>
+    <div class="controls"><label>Período <select id="periodo"><option value="now-15m">15 minutos</option><option value="now-1h">1 hora</option><option value="now-6h">6 horas</option><option value="now-24h">24 horas</option><option value="now-30d" selected>Últimos 30 dias</option></select></label><button id="tv" class="quiet" hidden>Modo TV</button></div></div>
     <section id="evolucao" class="card evolution" aria-labelledby="titulo-evolucao" hidden>
       <h2 id="titulo-evolucao">Evolução dos problemas</h2>
       <p id="evolucao-status" role="status"></p>
@@ -36,6 +36,7 @@
   </section>
 </main>
 </html>
+
 
 
 
