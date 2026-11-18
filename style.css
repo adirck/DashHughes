@@ -12,3 +12,6 @@
 .brand-icon svg{width:21px;height:21px;display:block}
 .detail-kpis{align-content:stretch}
 @media(max-width:600px){.detail-kpi strong{font-size:24px}.detail-kpi small{font-size:9px}}
+header .brand{flex-shrink:0}
+.header-logo{display:block;width:180px;height:36px;object-fit:contain;object-position:left center}
+@media(max-width:600px){.header-logo{width:155px;height:31px}}
