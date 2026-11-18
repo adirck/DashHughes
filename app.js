@@ -74,14 +74,14 @@ function draw(canvas,series,detail) {
   const colors = ['#51b99b','#729ee9','#d79048','#b781d2','#70b9c1'];
   const data = {datasets:series.filter(row => row.historico?.length).map((row,i) => ({
     label:row.nome,borderColor:colors[i%colors.length],backgroundColor:colors[i%colors.length],
-    data:row.historico.map(([x,y])=>({x,y})),pointRadius:detail?2:0,borderWidth:2,
+    data:row.historico.map(([x,y])=>({x,y})),pointRadius:detail?2:0,borderWidth:2,stepped:true,
   }))};
   const foreground = getComputedStyle(document.documentElement).getPropertyValue('--text').trim();
   const chart = new window.Chart(canvas,{
     type:'line',data,
     options:{...chartOptions,parsing:false,
       scales:{x:{type:'linear',display:detail,ticks:{maxTicksLimit:6,color:foreground,callback:value=>clock.format(value)}},
-        y:{display:detail,ticks:{color:foreground}}},
+        y:{display:detail,ticks:{color:foreground,precision:0}}},
       plugins:{legend:{display:detail,labels:{color:foreground}},tooltip:{enabled:detail,
         callbacks:{title:items=>clock.format(items[0].parsed.x)}}},
     },
@@ -108,7 +108,7 @@ function canvasFor(title,large = false) {
 }
 function card(data,period) {
   const node = element('article',undefined,'card');
-  const link = element('a',data.titulo);
+  const link = element('a',headingFor(data));
   link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period);
   const heading = element('h2');
   heading.append(link);
@@ -126,7 +126,7 @@ function card(data,period) {
   return {node,canvas,series:data.series.slice(0,3)};
 }
 function detailContent(data,container) {
-  document.querySelector('h1').textContent = data.titulo;
+  document.querySelector('h1').textContent = headingFor(data);
   if (data.estado !== 'ok') {
     container.replaceChildren(element('p',states[data.estado] ?? 'Dados indisponíveis.'));
     return;
@@ -151,6 +151,75 @@ function detailContent(data,container) {
   const hasHistory = data.series.some(row => row.historico?.length);
   container.replaceChildren(...(hasHistory && window.Chart?[wrap,scroll]:[scroll]));
   if (hasHistory) draw(canvas,data.series,true);
+}
+
+const severities = new Map([
+  [51,{titulo:'Problemas críticos',matches:['disaster','critical']}],
+  [53,{titulo:'Problemas de severidade alta',matches:['high']}],
+  [55,{titulo:'Problemas de severidade média',matches:['average','medium']}],
+  [14,{titulo:'Avisos',matches:['warning','warn']}],
+  [52,{titulo:'Ocorrências informativas',matches:['information','info']}],
+]);
+const severityLabels = {disaster:'Crítica',critical:'Crítica',high:'Alta',average:'Média',medium:'Média',
+  warning:'Aviso',warn:'Aviso',information:'Informativa',info:'Informativa', 'not classified':'Sem classificação'};
+const headingFor = data => severities.get(data.id)?.titulo ?? data.titulo;
+
+function storeList(token,panelId) {
+  const section = document.querySelector('#ocorrencias');
+  if (!section) return;
+  section.hidden = false;
+  const feedback = section.querySelector('#status-ocorrencias');
+  const search = section.querySelector('input');
+  const tbody = section.querySelector('tbody');
+  const table = section.querySelector('.table-scroll');
+  const selected = severities.get(panelId);
+  let rows;
+  let fetchError = false;
+  let limited = false;
+
+  function renderStores() {
+    if (!rows) return;
+    const term = search.value.trim().toLocaleLowerCase('pt-BR');
+    const filtered = rows.filter(row => (!selected || selected.matches.includes(row.severidade.toLowerCase())) &&
+      (!term || [row.loja,row.host,row.problema].some(value => value.toLocaleLowerCase('pt-BR').includes(term))));
+    tbody.replaceChildren(...filtered.map(row=>{
+      const tr = document.createElement('tr');
+      const place = element('th',row.loja);
+      place.scope = 'row';
+      if (row.host) place.append(element('small',row.host,'codigo-loja'));
+      tr.append(place);
+      tr.insertCell().textContent = severityLabels[row.severidade.toLowerCase()] ?? (row.severidade || '—');
+      tr.insertCell().textContent = row.problema;
+      tr.insertCell().textContent = row.horario || '—';
+      return tr;
+    }));
+    table.hidden = filtered.length === 0;
+    const count = new Set(filtered.map(row => row.host || row.loja)).size;
+    const summary = filtered.length
+      ? new Intl.NumberFormat('pt-BR').format(count) + (count === 1 ? ' loja · ' : ' lojas · ') + filtered.length +
+        (filtered.length === 1 ? ' ocorrência aberta.' : ' ocorrências abertas.')
+      : term ? 'Nenhuma loja corresponde à busca.' : 'Nenhuma ocorrência aberta para esta seleção.';
+    feedback.textContent = (fetchError ? 'Falha na atualização. Exibindo a última lista. ' : '') +
+      summary + (limited ? ' Exibindo até 500 ocorrências.' : '');
+  }
+  search.addEventListener('input',renderStores);
+  async function refreshStores() {
+    try {
+      const data = await api('/api/problemas',{headers:{Authorization:'Bearer '+token}});
+      if (!Array.isArray(data.ocorrencias)) throw new Error('Lista de ocorrências indisponível.');
+      rows = data.ocorrencias;
+      limited = data.limitado;
+      fetchError = false;
+      renderStores();
+    } catch (error) {
+      fetchError = true;
+      if (rows) renderStores();
+      else feedback.textContent = message(error);
+    } finally {
+      setTimeout(refreshStores,REFRESH_SECONDS*1000);
+    }
+  }
+  refreshStores();
 }
 
 function setTheme() {
@@ -299,10 +368,12 @@ if (panel) {
       panel.hidden = false;
       status.textContent = 'Selecione um painel na página de monitoramento.';
     } else {
+      storeList(token,isDetail ? Number(id) : null);
       refresh();
       setInterval(refreshStatus,1000);
     }
   }
 }
+
 
 

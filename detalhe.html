@@ -15,9 +15,23 @@
     <div class="controls"><label>Período <select id="periodo"><option value="now-15m">15 minutos</option><option value="now-1h" selected>1 hora</option><option value="now-6h">6 horas</option><option value="now-24h">24 horas</option></select></label></div></div>
     
     <div id="cards" class="card"></div>
+    <section id="ocorrencias" class="occurrences card" aria-labelledby="titulo-ocorrencias" hidden>
+      <div class="toolbar">
+        <div><h2 id="titulo-ocorrencias">Lojas com problemas</h2>
+          <p id="status-ocorrencias" role="status">Buscando ocorrências…</p></div>
+        <label for="buscar-loja">Buscar loja ou problema</label>
+        <input id="buscar-loja" type="search" placeholder="Nome, código ou problema">
+      </div>
+      <div class="table-scroll" hidden>
+        <table><thead><tr><th scope="col">Loja</th><th scope="col">Severidade</th><th scope="col">Problema</th><th scope="col">Início</th></tr></thead>
+          <tbody></tbody></table>
+      </div>
+    </section>
+
   </section>
 </main>
 </html>
+
 
 
 
