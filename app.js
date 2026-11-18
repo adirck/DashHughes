@@ -150,16 +150,22 @@ function showProblemList(name,rows){
   (index+1)+'. Loja: '+storeName(row),
   'Código: '+(row.host||'Não informado'),
   'Problema: '+simple(row.problema),
+  'Início do problema: '+(Number.isFinite(timestamp(row.horario)) ? new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short'}).format(timestamp(row.horario)) : 'Não informado'),
  ].join('\n'));
  message.value=[
   'Olá, equipe Hughes.',
   '',
-  'Solicitamos a verificação dos casos abaixo.',
-  'Tipo de ocorrência: '+name,
-  'Levantamento em '+fullDates.format(Date.now())+' (horário de Brasília).',
+  'Solicitamos a análise das ocorrências abaixo e o apoio para restabelecer o funcionamento das lojas afetadas.',
+  'Ocorrência: '+name,
+  'Data do levantamento: '+fullDates.format(Date.now())+' (horário de Brasília).',
   'Total: '+rows.length+(rows.length===1?' ocorrência.':' ocorrências.'),
   '',
   entries.join('\n\n'),
+  '',
+  'Por favor, confirmem o recebimento e informem o número do chamado, o diagnóstico e a previsão de normalização.',
+  '',
+  'Obrigado.',
+  'Suporte de TI — Lojas',
  ].join('\n');
  const copy=node('button','Copiar mensagem','primary');
  copy.type='button';
@@ -345,6 +351,7 @@ if(!login){
   refresh();
  }
 }
+
 
 
 
