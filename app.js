@@ -139,8 +139,13 @@ function statCards(){
 function distribution(){
  const box=surface('distribution');box.id='tipos-problemas';const head=node('div',undefined,'panel-heading');head.append(heading('O que está acontecendo'),node('span',incidents.length+' ocorrências','subtext'));box.append(head);
  const grouped=new Map();for(const row of incidents){const key=simple(row.problema);grouped.set(key,(grouped.get(key)??0)+1);}
- const all=[...grouped].sort((a,b)=>b[1]-a[1]),top=all.slice(0,6);if(all.length>6)top.push(['Outros',all.slice(6).reduce((sum,row)=>sum+row[1],0)]);
- const list=node('div',undefined,'distribution-list'),maximum=top[0]?.[1]??1;
+ const urgent='Firewall não responde ao monitoramento';
+ const all=[...grouped].sort((a,b)=>{
+  if(a[0]===urgent)return -1;
+  if(b[0]===urgent)return 1;
+  return b[1]-a[1];
+ }),top=all.slice(0,6);if(all.length>6)top.push(['Outros',all.slice(6).reduce((sum,row)=>sum+row[1],0)]);
+ const list=node('div',undefined,'distribution-list'),maximum=Math.max(1,...top.map(row=>row[1]));
  for(const [name,count]of top){const item=node('a',undefined,'problem-link');
  item.href='./problema.html?v=13&'+(name==='Outros'
   ? 'grupo=outros&excluir='+encodeURIComponent(JSON.stringify(all.slice(0,6).map(row=>row[0])))
@@ -287,6 +292,7 @@ if(!login){
   refresh();
  }
 }
+
 
 
 
