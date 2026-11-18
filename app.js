@@ -113,7 +113,7 @@ function card(data,period,occurrences) {
   const head = element('div',undefined,'priority-head');
   const info = element('div');
   const link = element('a',headingFor(data));
-  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period)+'&v=4';
+  link.href = './detalhe.html?id='+data.id+'&from='+encodeURIComponent(period)+'&v=5';
   const heading = element('h2');
   heading.append(link);
   info.append(heading);
@@ -203,6 +203,27 @@ function inicioTimestamp(value) {
   }
   return Infinity;
 }
+function descricaoSimples(value) {
+  const texto = value.trim();
+  const link = texto.match(/\bwan\s*([12])\b/i)?.[1];
+  const conexao = link ? 'A conexão de internet '+link+' da loja' : 'Uma conexão da loja';
+  if (/license not registered/i.test(texto)) return 'A licença do equipamento de rede da loja não foi cadastrada.';
+  if (/\brestarted\b|\brebooted\b/i.test(texto)) return 'O equipamento de rede da loja reiniciou.';
+  if (/\bunreachable\b|\(NoData\)/i.test(texto)) return 'O equipamento de rede da loja não responde ao monitoramento.';
+  if (/highpktloss|packet loss|pkt\s*loss/i.test(texto)) return conexao+' está perdendo dados.';
+  if (/\blatency\b/i.test(texto)) return conexao+' está lenta.';
+  if (/\bdown\b/i.test(texto)) return conexao+' está indisponível.';
+  return texto;
+}
+
+function problemText(node,value) {
+  const simple = descricaoSimples(value);
+  node.textContent = simple;
+  if (simple !== value) node.title = value;
+  return node;
+}
+
+
 function renderOldest(container,rows,category) {
   if (!category) return;
   const dated = rows.filter(row=>category.matches.includes(row.severidade.toLowerCase()))
@@ -219,7 +240,7 @@ function renderOldest(container,rows,category) {
   for (const {row} of oldest) {
     const caseItem = element('li');
     const description = element('div');
-    description.append(element('strong',row.loja),element('span',row.problema,'case-problem'));
+    description.append(element('strong',row.loja),problemText(element('span',undefined,'case-problem'),row.problema));
     caseItem.append(description,element('span',formatarInicio(row.horario),'case-start'));
     list.append(caseItem);
   }
@@ -244,7 +265,7 @@ function storeList(token,panelId,onUpdate) {
     if (!rows) return;
     const term = search.value.trim().toLocaleLowerCase('pt-BR');
     const filtered = rows.filter(row => (!selected || selected.matches.includes(row.severidade.toLowerCase())) &&
-      (!term || [row.loja,row.host,row.problema].some(value => value.toLocaleLowerCase('pt-BR').includes(term))));
+      (!term || [row.loja,row.host,row.problema,descricaoSimples(row.problema)].some(value => value.toLocaleLowerCase('pt-BR').includes(term))));
     tbody.replaceChildren(...filtered.map(row=>{
       const tr = document.createElement('tr');
       const place = element('th',row.loja);
@@ -252,7 +273,7 @@ function storeList(token,panelId,onUpdate) {
       if (row.host) place.append(element('small',row.host,'codigo-loja'));
       tr.append(place);
       tr.insertCell().textContent = severityLabels[row.severidade.toLowerCase()] ?? (row.severidade || '—');
-      tr.insertCell().textContent = row.problema;
+      problemText(tr.insertCell(),row.problema);
       tr.insertCell().textContent = formatarInicio(row.horario);
       return tr;
     }));
@@ -439,6 +460,7 @@ if (panel) {
     }
   }
 }
+
 
 
 
