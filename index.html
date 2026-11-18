@@ -4,17 +4,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src https://dashhughes.adirck-sites.workers.dev; style-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>DashHughes | Monitoramento</title>
-<link rel="stylesheet" href="./style.css?v=2">
+<link rel="stylesheet" href="./style.css?v=4">
 <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
-<script type="module" src="./app.js?v=3"></script>
+<script type="module" src="./app.js?v=4"></script>
 <header><a class="brand" href="./">Dash<span>Hughes</span></a><div class="controls"><button id="tema" class="quiet" hidden>Alternar tema</button><button id="sair" class="quiet" hidden>Sair</button></div></header>
 <main>
   <section id="painel" hidden>
     
     <div class="toolbar"><div><h1>Monitoramento</h1><p id="atualizacao"></p><p id="status" role="status">Carregando…</p></div>
     <div class="controls"><label>Período <select id="periodo"><option value="now-15m">15 minutos</option><option value="now-1h" selected>1 hora</option><option value="now-6h">6 horas</option><option value="now-24h">24 horas</option></select></label><button id="tv" class="quiet" hidden>Modo TV</button></div></div>
-    <div id="views" class="kpis"></div>
-    <div id="cards" class="grid"></div>
+    <div id="cards" class="overview-cards"></div>
     <section id="ocorrencias" class="occurrences card" aria-labelledby="titulo-ocorrencias" hidden>
       <div class="toolbar">
         <div><h2 id="titulo-ocorrencias">Lojas com problemas</h2>
@@ -31,6 +30,7 @@
   </section>
 </main>
 </html>
+
 
 
 
