@@ -134,7 +134,7 @@ const brandPalette=new Map([
  ['CRIS BARROS',{label:'Cris Barros',color:'#5B217A'}],
  ['ANIMALE',{label:'Animale',color:'#8B5E3C'}],
  ['OFF PREMIUM',{label:'Off Premium',color:'#F97316'}],
- ['CAROL BASSI',{label:'Carol Bassi',color:'#94A3B8'}],
+ ['CAROL BASSI',{label:'Carol Bassi',color:'#22C55E'}],
  ['OUTRAS',{label:'Outras',color:'#64748B'}],
 ]);
 function brandSlices(rows){
@@ -306,7 +306,7 @@ function oldestPanel(){
  const box=surface('oldest-panel'),head=node('div',undefined,'panel-heading');head.append(heading('Casos mais antigos sem solução'));const all=node('a','Ver todos');all.href='#ocorrencias';head.append(all);box.append(head);
  for(const row of rowsFor().slice(0,5)){
   const item=node('div',undefined,'oldest-row'),copy=node('div',undefined,'oldest-copy'),name=node('strong',storeName(row));name.append(node('small',row.host));
-  const problem=node('p',simple(row.problema));problem.title=row.problema;copy.append(name,problem);item.append(node('span',age(row),'age-tag'),copy,badge(severity(row)));box.append(item);
+  name.append(warning(row));const problem=node('p',simple(row.problema));problem.title=row.problema;copy.append(name,problem);item.append(node('span',age(row),'age-tag'),copy,badge(severity(row)));box.append(item);
  }return box;
 }
 function searchControl(label,placeholder,callback){
@@ -325,7 +325,7 @@ function tablePanel(brandFilter,problemFilter){
   const term=query.trim().toLowerCase();const rows=source.filter(row=>(selected==='all'||severity(row)?.key===selected)&&(!term||[row.loja,row.host,row.problema,simple(row.problema)].some(value=>value.toLowerCase().includes(term))));
   body.replaceChildren();for(const row of rows.slice(0,limit)){const tr=body.insertRow(),cat=severity(row),cell=colored(tr.insertCell(),cat);cell.className='severity-cell';cell.append(node('span',undefined,'dot'),node('span',cat?.short??'Outra'));
    const name=tr.insertCell();name.append(node('strong',storeName(row)),node('small',row.host+' · '+brand(row)));
-   const problem=tr.insertCell();problem.textContent=simple(row.problema);problem.title=row.problema;
+   name.append(warning(row));const actions=trackingActions(row);name.append(actions);const problem=tr.insertCell();problem.textContent=simple(row.problema);problem.title=row.problema;
    const duration=tr.insertCell();duration.className='mono';duration.textContent=age(row);
    const start=tr.insertCell();start.className='mono';start.textContent=started(row);const t=timestamp(row.horario);start.title=Number.isFinite(t)?fullDates.format(t):'Início indisponível';
   }
@@ -350,19 +350,116 @@ function detailStores(){
    const elapsed=age(row).replace(/\bd$/,'dias').replace(/\bh$/,'horas').replace(/\bmin$/,'minutos');
    const actions=node('div',undefined,'store-buttons'),copy=node('button','Copiar dados','quiet'),view=node('button','Ver loja','quiet');
    copy.onclick=async()=>{try{await navigator.clipboard.writeText([storeName(row),row.host,simple(row.problema),'Início: '+started(row)].join('\n'));feedback.textContent='Dados da loja copiados.';}catch{feedback.textContent='Não foi possível copiar. Abra Ver loja para consultar os dados.';}};
-   view.onclick=()=>showStore(row);actions.append(copy,view);item.append(name,problem,node('span',elapsed,'store-duration'),actions);list.append(item);
+   view.onclick=()=>showStore(row);actions.append(copy,view,...trackingActions(row).children);name.append(warning(row));item.append(name,problem,node('span',elapsed,'store-duration'),actions);list.append(item);
   }
   if(!rows.length)list.append(node('p','Nenhuma ocorrência encontrada.','empty'));
  }
  toolbar.append(title,searchControl('Filtrar','Loja ou código',update));box.append(toolbar,list,feedback);update();return box;
 }
+// Chamados ficam no serviço compartilhado; nenhum dado operacional é salvo no repositório.
+let tracking=null;
+const trackingPage=params.get('tela');
+const authOptions=()=>({headers:{Authorization:'Bearer '+sessionStorage.getItem(sessionKey)}});
+function eventFor(row){return tracking?.eventos.find(event=>event.id===row.id);}
+function ticketsFor(row){return tracking?.chamados.filter(ticket=>ticket.evento===row.id)??[];}
+function overdue(row){return !eventFor(row)?.fim?ticketsFor(row).filter(ticket=>ticket.prazo<Date.now()):[];}
+function warning(row){
+ const count=overdue(row).length;if(!count)return node('span');
+ const button=node('button','⚠ '+count,'overdue-marker');button.title=count+' previsões vencidas para este problema';button.setAttribute('aria-label',button.title);button.onclick=()=>showStoreLog(row);return button;
+}
+function modal(title){const dialog=document.querySelector('#loja-dialog'),content=document.querySelector('#loja-conteudo');content.replaceChildren(heading(title));if(!dialog.open)dialog.showModal();return content;}
+function showForecast(row){
+ const content=modal('Previsão para solução');content.append(node('p',storeName(row)+' · '+row.host),node('p',simple(row.problema)));
+ const form=node('form',undefined,'forecast-form'),feedback=node('p',undefined,'status-message');feedback.setAttribute('role','status');
+ const controls={};
+ for(const [key,label,type,max]of [['previsao','Previsão informada pela Hughes','date'],['numero','Número do chamado','text',100],['analista','Analista Hughes','text',120],['observacoes','Informações adicionais (opcional)','textarea',500]]){
+  const wrap=node('label',label),input=node(type==='textarea'?'textarea':'input');input.name=key;input.id='previsao-'+key;
+  if(type!=='textarea')input.type=type;if(max)input.maxLength=max;input.required=key!=='observacoes';if(type==='date'){const date=new Date(Date.now()-3*3600000).toISOString().slice(0,10);input.min=date;}wrap.append(input);controls[key]=input;form.append(wrap);
+ }
+ form.append(node('small','A previsão vale até o fim do dia escolhido, no horário de Brasília. O registro será adicionado ao histórico, sem substituir os anteriores.'));
+ const save=node('button','Salvar previsão','quiet primary-action');save.type='submit';save.disabled=!tracking;form.append(save,feedback);content.append(form);
+ // Uma tentativa repetida do mesmo envio não cria dois chamados.
+ const id=crypto.randomUUID();
+ form.onsubmit=async event=>{event.preventDefault();save.disabled=true;feedback.textContent='Salvando…';
+  try{await api('/api/chamados',{...authOptions(),method:'POST',headers:{...authOptions().headers,'Content-Type':'application/json'},body:JSON.stringify({id,evento:row.id,...Object.fromEntries(Object.entries(controls).map(([key,input])=>[key,input.value]))})});
+   tracking=await api('/api/acompanhamento',authOptions());render();showStoreLog(row);
+  }catch(error){feedback.textContent=error.message;save.disabled=false;}
+ };
+}
+function ticketState(ticket,event){return event?.fim?(event.fim>ticket.prazo?'Encerrado após a previsão':'Encerrado no monitoramento'):(ticket.prazo<Date.now()?'Previsão vencida · problema ainda aberto':'Aguardando previsão');}
+function logEntries(content,events){
+ const ids=new Set(events.map(event=>event.id)),tickets=(tracking?.chamados??[]).filter(ticket=>ids.has(ticket.evento));
+ if(!tickets.length){content.append(node('p','Nenhum chamado registrado para esta loja.','empty'));return;}
+ for(const ticket of tickets){const event=events.find(event=>event.id===ticket.evento),item=node('article',undefined,'ticket-entry');
+  item.append(node('strong','Chamado '+ticket.numero+' · '+ticket.analista),node('p',simple(event.problema)),node('p','Registrado em '+fullDates.format(ticket.abertura)),node('p','Início do problema: '+(event.inicio?fullDates.format(event.inicio):'indisponível')),node('p','Previsão: '+ticket.previsao.split('-').reverse().join('/')),node('strong',ticketState(ticket,event),!event.fim&&ticket.prazo<Date.now()?'late-text':'subtext'));
+  if(event.fim)item.append(node('p','Saída da lista observada em '+fullDates.format(event.fim)));if(ticket.observacoes)item.append(node('p',ticket.observacoes));content.append(item);
+ }
+}
+function showStoreLog(row){const content=modal('Log Loja · '+storeName(row));content.append(node('p',row.host));const events=tracking?.eventos.filter(event=>(event.host||event.loja)===(row.host||row.loja))??[];logEntries(content,events);}
+function trackingActions(row){const actions=node('div',undefined,'tracking-actions'),forecast=node('button','Previsão para solução','quiet'),log=node('button','Log Loja','quiet');forecast.disabled=!tracking||!row.id;forecast.onclick=()=>showForecast(row);log.onclick=()=>showStoreLog(row);actions.append(forecast,log);return actions;}
+function smallPie(title,slices){
+ const box=node('div',undefined,'tracking-pie');box.append(node('h3',title));
+ if(slices.length){const wrap=node('div',undefined,'brand-pie-wrap'),canvas=node('canvas');canvas.setAttribute('role','img');canvas.setAttribute('aria-label',title+': '+slices.map(s=>s.label+' '+s.count).join(', '));wrap.append(canvas);box.append(wrap);queueMicrotask(()=>drawBrandPie(canvas,slices));const legend=node('ul',undefined,'compact-legend');for(const slice of slices){const li=node('li'),dot=node('span',undefined,'legend-dot');dot.style.backgroundColor=slice.color;li.append(dot,node('span',slice.label+' · '+slice.count));legend.append(li);}box.append(legend);}else box.append(node('p','Nenhum caso.','empty'));return box;
+}
+function lateCases(){return tracking?.eventos.filter(event=>!event.fim&&overdue(event).length)??[];}
+function logCard(){
+ const box=surface('tracking-card');box.append(heading('Acompanhamento de chamados'));const rows=lateCases();box.append(node('p',tracking?rows.length+' problemas com previsão vencida':'Carregando histórico compartilhado…','subtext'));
+ const pies=node('div',undefined,'tracking-pies');const buckets=[{label:'Mais de um mês',color:'#ef4444',count:0},{label:'Mais de duas semanas até um mês',color:'#f97316',count:0},{label:'Mais de uma semana até duas',color:'#facc15',count:0},{label:'Mais de um dia até uma semana',color:'#3b82f6',count:0},{label:'Até um dia',color:'#94a3b8',count:0}];
+ for(const row of rows){const days=(Date.now()-Math.min(...overdue(row).map(ticket=>ticket.prazo)))/86400000;buckets[days>30?0:days>14?1:days>7?2:days>1?3:4].count++;}
+ pies.append(smallPie('Casos por marca',brandSlices(rows)),smallPie('Tempo desde a primeira previsão vencida',buckets.filter(b=>b.count)));box.append(pies);const link=node('a','Abrir log de chamados →','quiet card-link');link.href='./?tela=logs&v=19';box.append(link);return box;
+}
+function reportCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=relatorio&v=19';link.append(heading('Relatório geral de incidentes'),node('p','Quedas de Link 1 e Link 2 com mais de 24 horas · frequência e dias offline · últimos três meses','subtext'));box.append(link);return box;}
+function renderLogs(content){
+ document.querySelector('h1').textContent='Log de chamados';document.querySelector('#subtitulo').textContent='Histórico de previsões, analistas e chamados Hughes. Registros anteriores permanecem disponíveis.';
+ const box=surface('log-page'),controls=node('div',undefined,'log-filters'),search=node('input'),select=node('select');search.type='search';search.placeholder='Buscar loja, código, chamado ou analista';search.setAttribute('aria-label','Buscar no log');
+ for(const [value,label]of [['all','Todos os registros'],['late','Previsões vencidas'],['open','Problemas abertos'],['closed','Problemas encerrados']]){const option=node('option',label);option.value=value;select.append(option);}select.setAttribute('aria-label','Situação do chamado');
+ const list=node('div');function update(){list.replaceChildren();const term=search.value.toLowerCase();const events=(tracking?.eventos??[]).filter(event=>ticketsFor(event).length&&(select.value==='all'||select.value==='late'&&overdue(event).length||select.value==='open'&&!event.fim||select.value==='closed'&&event.fim)&&[event.loja,event.host,...ticketsFor(event).flatMap(ticket=>[ticket.numero,ticket.analista])].some(value=>value?.toLowerCase().includes(term)));
+  for(const event of events){const part=node('section',undefined,'log-case'),name=heading(storeName(event));name.append(warning(event));part.append(name,node('p',event.host+' · '+brand(event)));logEntries(part,[event]);list.append(part);}if(!events.length)list.append(node('p','Nenhum registro para este filtro.','empty'));
+ }search.oninput=update;select.onchange=update;controls.append(search,select);box.append(controls,list);content.append(box);update();
+}
+// Os intervalos de queda são unidos por loja/link para não contar o mesmo tempo duas vezes.
+function reportRows(days,now=Date.now()){
+ const cutoff=new Date(now);cutoff.setUTCMonth(cutoff.getUTCMonth()-3);const start=Math.max(now-days*86400000,cutoff.getTime()),groups=new Map();
+ for(const event of tracking?.eventos??[]){const end=event.fim??now;if(!event.link||!event.inicio||end-event.inicio<=86400000||end<=start||event.inicio>=now)continue;
+  const key=(event.host||event.loja)+'|'+event.link;if(!groups.has(key))groups.set(key,{...event,count:0,intervals:[],open:false});const group=groups.get(key);group.count++;group.open||=!event.fim;group.intervals.push([Math.max(start,event.inicio),Math.min(end,now)]);
+ }
+ return [...groups.values()].map(group=>{const intervals=group.intervals.sort((a,b)=>a[0]-b[0]);let sum=0,last=null;for(const span of intervals){if(last&&span[0]<=last[1])last[1]=Math.max(last[1],span[1]);else{if(last)sum+=last[1]-last[0];last=[...span];}}if(last)sum+=last[1]-last[0];return {...group,days:sum/86400000};}).sort((a,b)=>b.days-a.days||b.count-a.count);
+}
+function offlineDuration(days){const hours=Math.floor(days*24);return Math.floor(hours/24)+' dias e '+hours%24+' horas';}
+function reportMessage(title,text){
+ const content=modal(title),area=node('textarea',undefined,'hughes-message');area.id='mensagem-hughes';area.value=text;area.rows=18;area.setAttribute('aria-label','Mensagem do relatório, editável');const footer=node('div',undefined,'message-footer'),copy=node('button','Copiar mensagem','quiet'),feedback=node('span',undefined,'subtext');feedback.setAttribute('role','status');copy.onclick=async()=>{try{await navigator.clipboard.writeText(area.value);feedback.textContent='Mensagem copiada.';}catch{area.focus();area.select();feedback.textContent='Selecione e copie o texto.';}};footer.append(copy,feedback);content.append(area,footer);
+}
+function storeIncidentMessage(row,days,replacement=false){
+ const now=Date.now(),rows=reportRows(days,now).filter(item=>(item.host||item.loja)===(row.host||row.loja)),target=rows.find(item=>item.link===row.link);
+ const coverage=tracking?.inicioColeta?fullDates.format(tracking.inicioColeta):'indisponível';
+ const common=['Loja: '+storeName(row),'Código: '+row.host,'Período: últimos '+(days===92?'três meses':days+' dias'), 'Levantamento: '+fullDates.format(now)+' (horário de Brasília).'];
+ const note='Contagem de quedas superiores a 24 horas que afetaram o período. Tempo offline somado dentro do período. Histórico disponível desde '+coverage+'; quedas encerradas antes da coleta não estão incluídas. Encerramentos são observados nas consultas ao monitoramento.';
+ if(replacement&&target){reportMessage('Solicitar troca de Link '+row.link,['Olá, equipe Hughes.','','Solicitamos a substituição do Link '+row.link+' da loja abaixo, devido às quedas e ao tempo acumulado de indisponibilidade.',...common,'','Link: '+row.link,'Quedas registradas com mais de 24 horas: '+target.count,'Tempo total indisponível: '+offlineDuration(target.days), 'Situação: '+(target.open?'há uma queda em aberto.':'quedas encerradas no monitoramento.'),'','Pedimos a análise do histórico e o retorno com a alternativa de substituição, número do chamado e previsão de atendimento.','',note,'','Suporte T.I. — Lojas'].join('\n'));return;}
+ const cutoff=new Date(now);cutoff.setUTCMonth(cutoff.getUTCMonth()-3);const start=Math.max(now-days*86400000,cutoff.getTime());
+ const details=[];for(const link of rows){details.push('LINK '+link.link+' — '+link.count+' quedas superiores a 24 horas','Tempo total offline no período: '+offlineDuration(link.days));const events=tracking.eventos.filter(event=>(event.host||event.loja)===(row.host||row.loja)&&event.link===link.link&&event.inicio&&(event.fim??now)-event.inicio>86400000&&(event.fim??now)>start&&event.inicio<now).sort((a,b)=>a.inicio-b.inicio);
+  events.forEach((event,index)=>{details.push((index+1)+'. '+simple(event.problema),'Início: '+fullDates.format(event.inicio),'Fim: '+(event.fim?fullDates.format(event.fim):'ainda em aberto'),'Indisponibilidade no período: '+offlineDuration((Math.min(event.fim??now,now)-Math.max(event.inicio,start))/86400000));const tickets=ticketsFor(event);for(const ticket of tickets)details.push('Chamado '+ticket.numero+' · analista '+ticket.analista+' · registrado '+fullDates.format(ticket.abertura)+' · previsão '+ticket.previsao.split('-').reverse().join('/')+(ticket.observacoes?' · '+ticket.observacoes:''));details.push('');});}
+ reportMessage('Relatório total · '+storeName(row),['Olá, equipe Hughes.','','Segue o relatório de indisponibilidade dos links desta loja.',...common,'',...details,note,'','Solicitamos a avaliação dos casos e as medidas para estabilizar a conexão.','','Suporte T.I. — Lojas'].join('\n'));
+}
+
+function renderIncidentReport(content){
+ document.querySelector('h1').textContent='Relatório geral de incidentes';document.querySelector('#subtitulo').textContent='Links com quedas superiores a 24 horas. Cada queda é contada uma vez por período; o tempo offline continua aumentando enquanto estiver aberta.';
+ const box=surface('report-page'),filters=node('div',undefined,'log-filters'),select=node('select'),search=node('input');for(const [value,label]of [[30,'Último mês (30 dias)'],[7,'Última semana'],[1,'Último dia'],[92,'Últimos três meses']]){const option=node('option',label);option.value=value;select.append(option);}select.setAttribute('aria-label','Período do relatório');search.type='search';search.placeholder='Buscar loja ou código';search.setAttribute('aria-label','Buscar loja no relatório');
+ const notice=node('p',undefined,'history-notice');notice.textContent=tracking?.inicioColeta?'Histórico coletado desde '+fullDates.format(tracking.inicioColeta)+'. Inclui os alarmes já abertos nessa data; quedas encerradas antes da coleta não estão disponíveis. Atualização automática a cada 5 minutos. O encerramento é o horário em que a saída da lista foi observada.':'O histórico ainda está sendo iniciado.';
+ const summary=node('p',undefined,'subtext'),scroll=node('div',undefined,'table-scroll'),table=node('table'),head=table.createTHead().insertRow();for(const title of ['Loja / código','Link','Quedas > 24 h','Total de dias offline','Situação','Relatórios'])head.append(node('th',title));const body=table.createTBody();scroll.append(table);
+ function update(){const term=search.value.toLowerCase(),rows=reportRows(Number(select.value)).filter(row=>(row.loja+' '+row.host).toLowerCase().includes(term));body.replaceChildren();for(const row of rows){const tr=body.insertRow(),name=tr.insertCell();name.append(node('strong',storeName(row)),node('small',row.host+' · '+brand(row)));for(const value of ['Link '+row.link,row.count,format.format(row.days)+' dias',row.open?'Em aberto':'Encerrado'])tr.insertCell().textContent=value;const actions=tr.insertCell(),buttons=node('div',undefined,'tracking-actions'),total=node('button','Gerar relatório total','quiet'),replace=node('button','Solicitar troca de link','quiet');total.onclick=()=>storeIncidentMessage(row,Number(select.value));replace.onclick=()=>storeIncidentMessage(row,Number(select.value),true);buttons.append(total,replace);actions.append(buttons);}summary.textContent=rows.length+' links · contagem das quedas que afetaram o período selecionado. Dias offline somados somente dentro desse período.';if(!rows.length){const cell=body.insertRow().insertCell();cell.colSpan=6;cell.textContent='Nenhuma queda superior a 24 horas registrada neste período.';}}
+ select.onchange=update;search.oninput=update;filters.append(select,search);box.append(filters,notice,summary,scroll);content.append(box);update();
+}
+
 function render(){
  const focused=document.activeElement?.id,selection=document.activeElement?.selectionStart;
  for(const chart of charts)chart.destroy();charts=[];
  const content=document.querySelector('#conteudo');content.replaceChildren();
  const subtitle=document.querySelector('#subtitulo'),title=document.querySelector('h1');
  const stores=new Set(incidents.map(row=>row.host||row.loja)).size;
- if(brandPage||problemPage){
+ if(trackingPage==='logs'||trackingPage==='relatorio'){
+  const back=node('a','‹ Visão geral','back');back.href='./?v=19';content.append(back);
+  if(trackingPage==='logs')renderLogs(content);else renderIncidentReport(content);
+ }else if(brandPage||problemPage){
   const valid=problemPage
    ? isOtherProblem||(requestedProblem.length>0&&requestedProblem.length<=500)
    : brandLogos.has(requestedBrand)||requestedBrand==='OUTRAS';
@@ -389,7 +486,7 @@ function render(){
  }else{
   title.textContent='Saúde da rede das lojas';subtitle.textContent=stores+' lojas com ocorrência · '+incidents.length+' ocorrências abertas · Firewalls monitorados via Grafana';
   const chartsRow=node('div',undefined,'chart-layout');chartsRow.append(chartPanel(),distribution());
-  const support=node('div',undefined,'support-layout');support.append(brandPanel(),oldestPanel());content.append(statCards(),chartsRow,support,tablePanel());
+  const support=node('div',undefined,'support-layout');const right=node('div',undefined,'support-right');right.append(oldestPanel(),logCard());support.append(brandPanel(),right);content.append(statCards(),chartsRow,support,tablePanel(),reportCard());
   const links=node('div');links.id='links';content.append(links);
  }
  if(focused==='search-stores'){const input=document.querySelector('#search-stores');input?.focus();input?.setSelectionRange(selection,selection);}
@@ -399,14 +496,14 @@ async function refresh(){
  try{
   const options={headers:{Authorization:'Bearer '+sessionStorage.getItem(sessionKey)},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(45000)])};
   const [summary,problems]=await Promise.all([api('/api/resumo?from='+period+'&to=now',options),api('/api/problemas',options)]);
-  if(controller.signal.aborted)return;panels=summary.paineis;incidents=problems.ocorrencias;updated=Date.parse(summary.atualizadoEm);status.textContent='';render();
+  if(controller.signal.aborted)return;panels=summary.paineis;incidents=problems.ocorrencias;tracking=problems.acompanhamento??tracking;updated=Date.parse(summary.atualizadoEm);status.textContent=tracking?.aviso??(tracking?.ultimaColeta&&Date.now()-tracking.ultimaColeta>900000?'O histórico está sem atualização há mais de 15 minutos. Confira a última coleta antes de usar o relatório.':'');render();
  }catch(error){if(!controller.signal.aborted)status.textContent=error.message==='Failed to fetch'?'Não foi possível atualizar. Exibindo os últimos dados.':error.message;}
  finally{if(!controller.signal.aborted)timer=setTimeout(refresh,REFRESH_SECONDS*1000);}
 }
 if(!login){
  if(!sessionStorage.getItem(sessionKey))out();
  else{
-  if(brandPage||problemPage)document.querySelector('#periods').hidden=true;else periodControls();document.querySelector('#sair').onclick=out;
+  if(brandPage||problemPage||trackingPage)document.querySelector('#periods').hidden=true;else periodControls();document.querySelector('#sair').onclick=out;
   document.querySelector('#conta').onclick=event=>{const button=document.querySelector('#sair');button.hidden=!button.hidden;event.currentTarget.setAttribute('aria-expanded',String(!button.hidden));};
   const theme=document.querySelector('#tema');theme.setAttribute('aria-label','Tema escuro do centro de operações');theme.title='Tema escuro';theme.disabled=true;
   document.querySelector('#tv').onclick=async()=>{const panel=document.querySelector('#painel');try{if(document.fullscreenElement)await document.exitFullscreen();else await panel.requestFullscreen();}catch{status.textContent='Tela cheia indisponível neste navegador.';}};
