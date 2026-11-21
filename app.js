@@ -125,18 +125,78 @@ function chartPanel(cat){
  if(series.length)queueMicrotask(()=>plot(canvas,series));else wrap.replaceChildren(node('p','Histórico indisponível no período selecionado.','empty'));
  return box;
 }
+const brandPalette=new Map([
+ ['FARM',{label:'FARM',color:'#F472B6'}],
+ ['FOXTON',{label:'Foxton',color:'#3B82F6'}],
+ ['FABULA',{label:'Fábula',color:'#FACC15'}],
+ ['NV',{label:'BYNV',color:'#D4AF37'}],
+ ['MARIA FILÓ',{label:'Maria Filó',color:'#C0C0C0'}],
+ ['CRIS BARROS',{label:'Cris Barros',color:'#5B217A'}],
+ ['ANIMALE',{label:'Animale',color:'#8B5E3C'}],
+ ['OFF PREMIUM',{label:'Off Premium',color:'#F97316'}],
+ ['CAROL BASSI',{label:'Carol Bassi',color:'#94A3B8'}],
+ ['OUTRAS',{label:'Outras',color:'#64748B'}],
+]);
+function brandSlices(rows){
+ const counts=new Map();
+ for(const row of rows){const name=brand(row);counts.set(name,(counts.get(name)??0)+1);}
+ return [...brandPalette].filter(([name])=>counts.has(name))
+  .map(([name,palette])=>({...palette,count:counts.get(name)}));
+}
+function drawBrandPie(canvas,slices){
+ if(!window.Chart||!canvas.isConnected)return;
+ const chart=new window.Chart(canvas,{
+  type:'pie',
+  data:{labels:slices.map(slice=>slice.label),datasets:[{
+   data:slices.map(slice=>slice.count),
+   backgroundColor:slices.map(slice=>slice.color),
+   borderColor:'#101923',borderWidth:1.5,
+  }]},
+  options:{responsive:true,maintainAspectRatio:false,animation:false,
+   plugins:{legend:{display:false},tooltip:{callbacks:{
+    label:item=>item.label+': '+item.parsed+(item.parsed===1?' ocorrência':' ocorrências'),
+   }}},
+  },
+ });
+ charts.push(chart);
+}
+
 function statCards(){
  const grid=node('div',undefined,'stats-grid');grid.id='alertas';
  for(const cat of categories){
-  const card=colored(node('a',undefined,'stat-card'),cat);card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=9';
+  const rows=rowsFor(cat),slices=brandSlices(rows),total=rows.length;
+  const card=colored(node('a',undefined,'stat-card'),cat);
+  card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=18';
+  card.setAttribute('aria-label',cat.title+' · '+total+' ocorrências');
   const label=node('div',undefined,'stat-label');label.append(node('span',undefined,'dot'),node('span',cat.short));
-  const value=panelValue(cat),metric=node('div',undefined,'stat-value'+(value===0?' zero':''));metric.append(node('strong',value===null?'—':format.format(value)));
-  const spark=node('div',undefined,'spark'),canvas=node('canvas');spark.append(canvas);metric.append(spark);
-  const rows=rowsFor(cat);const caption=rows.length?'Mais antigo aberto há '+age(rows[0]):'Nenhum caso aberto';
-  card.append(label,metric,node('p',caption,'stat-caption'));grid.append(card);queueMicrotask(()=>plot(canvas,lineSeries(cat),true));
+  const metric=node('div',undefined,'stat-value'+(total===0?' zero':''));
+  metric.append(node('strong',format.format(total)));
+  const graph=node('div',undefined,'brand-pie-wrap');
+  if(slices.length&&window.Chart){
+   const canvas=node('canvas');
+   canvas.setAttribute('role','img');
+   canvas.setAttribute('aria-label','Ocorrências de '+cat.short+' por marca: '+slices.map(slice=>slice.label+' '+slice.count).join(', '));
+   graph.append(canvas);queueMicrotask(()=>drawBrandPie(canvas,slices));
+  }else{
+   graph.append(node('span',total===0?'Sem ocorrências':'Por marca','brand-pie-empty'));
+  }
+  metric.append(graph);
+  const caption=rows.length?'Mais antigo aberto há '+age(rows[0]):'Nenhum caso aberto';
+  card.append(label,metric,node('p',caption,'stat-caption'));
+  if(slices.length){
+   const legend=node('ul',undefined,'brand-pie-legend');
+   legend.setAttribute('aria-label','Legenda das marcas');
+   for(const slice of slices){
+    const item=node('li'),swatch=node('span',undefined,'brand-pie-swatch');swatch.style.backgroundColor=slice.color;
+    item.append(swatch,node('span',slice.label+' · '+slice.count));legend.append(item);
+   }
+   card.append(legend);
+  }
+  grid.append(card);
  }return grid;
 }
-function showProblemList(name,rows){
+
+function showProblemList(name,rows,groups){
  const dialog=document.querySelector('#loja-dialog'),content=document.querySelector('#loja-conteudo');
  const title=heading('Lista para a Hughes — '+name);
  title.id='titulo-lista-hughes';
@@ -146,12 +206,15 @@ function showProblemList(name,rows){
  label.htmlFor='mensagem-hughes';
  const message=node('textarea',undefined,'hughes-message');
  message.id='mensagem-hughes';message.rows=14;message.spellcheck=false;
- const entries=rows.map((row,index)=>[
+ const entry=(row,index)=>[
   (index+1)+'. Loja: '+storeName(row),
   'Código: '+(row.host||'Não informado'),
   'Problema: '+simple(row.problema),
   'Início do problema: '+(Number.isFinite(timestamp(row.horario)) ? new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short'}).format(timestamp(row.horario)) : 'Não informado'),
- ].join('\n'));
+ ].join('\n');
+ const entries=groups
+  ? groups.map(group=>group.name+' — '+group.rows.length+(group.rows.length===1?' ocorrência':' ocorrências')+'\n'+group.rows.map(entry).join('\n\n'))
+  : rows.map(entry);
  message.value=[
   'Olá, equipe Hughes.',
   '',
@@ -211,7 +274,17 @@ function distribution(){
   showProblemList(name,rows);
  };
  line.append(item,generate);list.append(line);}
- box.append(list);return box;
+ const report=node('button','Gerar relatório total','primary total-report');
+ report.type='button';
+ report.onclick=()=>{
+  const excluded=all.slice(0,6).map(row=>row[0]);
+  const groups=top.map(([name])=>({
+   name,rows:rowsFor().filter(row=>name==='Outros'?!excluded.includes(simple(row.problema)):simple(row.problema)===name),
+  })).filter(group=>group.rows.length);
+  showProblemList('Relatório consolidado de todos os problemas',rowsFor(),groups);
+ };
+ report.disabled=incidents.length===0;
+ box.append(list,report);return box;
 }
 function brandPanel(){
  const box=surface('brand-panel');box.id='lojas';box.append(heading('Lojas afetadas por marca'));
@@ -351,6 +424,7 @@ if(!login){
   refresh();
  }
 }
+
 
 
 
