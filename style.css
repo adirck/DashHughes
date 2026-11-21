@@ -80,3 +80,5 @@ header .brand{flex-shrink:0}
 @media(min-width:601px){.support-layout{align-items:stretch}.support-layout>.brand-panel{display:flex;flex-direction:column;min-width:0}.support-layout>.brand-panel>.brand-grid{flex:1;grid-auto-rows:minmax(86px,1fr)}.support-layout>.brand-panel .brand-link{min-height:0}.support-layout>.brand-panel .brand-logo-box{height:auto;min-height:50px;flex:1}.support-layout>.brand-panel .brand-caption{flex-shrink:0}}
 .ranking-entry{position:relative;display:flex;flex-direction:column;gap:9px;flex:0 0 330px;max-width:360px;padding:18px;color:var(--text)}.ranking-entry h2{padding-right:18px;line-height:1.4}.ranking-entry .monitoring-open{padding-top:0}.ranking-entry:hover{border-color:var(--green)}
 @media(max-width:650px){.ranking-entry{flex-basis:auto;max-width:none;width:100%}}
+.period-tools{display:flex;flex-direction:column;align-items:flex-end;gap:8px;max-width:100%}.daily-report{font-size:11px;padding:7px 12px;color:var(--green)}
+@media(max-width:600px){.period-tools{width:100%;align-items:flex-end}.period-tools .periods{align-self:stretch}}
