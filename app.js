@@ -55,7 +55,7 @@ if(login){
   event.preventDefault();const button=login.querySelector('button');button.disabled=true;
   try{
    const data=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:login.elements.user.value,password:login.elements.password.value})});
-   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=36');
+   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=37');
   }catch(error){status.textContent=error.message;}finally{button.disabled=false;login.elements.password.value='';}
  });
 }
@@ -197,7 +197,7 @@ function statCards(){
  for(const cat of categories){
   const rows=rowsFor(cat),slices=brandSlices(rows),total=rows.length;
   const card=colored(node('a',undefined,'stat-card'),cat);
-  card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=36';
+  card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=37';
   card.setAttribute('aria-label',cat.title+' · '+total+' ocorrências');
   const label=node('div',undefined,'stat-label');label.append(node('span',undefined,'dot'),node('span',cat.short));
   const metric=node('div',undefined,'stat-value'+(total===0?' zero':''));
@@ -301,7 +301,7 @@ function distribution(){
  const dualRows=dualLinkRows(),otherIndex=top.findIndex(([name])=>name==='Outros');top.splice(otherIndex<0?top.length:otherIndex,0,[dualProblem,dualRows.length]);
  const list=node('div',undefined,'distribution-list'),maximum=Math.max(1,...top.map(row=>row[1]));
  for(const [name,count]of top){const item=node('a',undefined,'problem-link');
- item.href='./problema.html?v=36&'+(name==='Outros'
+ item.href='./problema.html?v=37&'+(name==='Outros'
   ? 'grupo=outros&excluir='+encodeURIComponent(JSON.stringify(all.slice(0,6).map(row=>row[0])))
   : 'problema='+encodeURIComponent(name));
  item.setAttribute('aria-label',name+' · '+count+(name===dualProblem?' lojas':' ocorrências'));
@@ -331,11 +331,11 @@ function brandPanel(){
  const brands=new Map();for(const row of incidents){const name=brand(row);if(!brands.has(name))brands.set(name,new Set());brands.get(name).add(row.host||row.loja);}
  const grid=node('div',undefined,'brand-grid');grid.style.marginTop='14px';
  for(const [name,stores]of [...brands].sort((a,b)=>b[1].size-a[1].size)){const chip=node('a',undefined,'brand-chip brand-link');
- chip.href='./marca.html?marca='+encodeURIComponent(name)+'&v=36';
+ chip.href='./marca.html?marca='+encodeURIComponent(name)+'&v=37';
  chip.setAttribute('aria-label',name+' · '+stores.size+' lojas afetadas');
  const logoBox=node('span',undefined,'brand-logo-box');
  if(brandLogos.has(name)){
-  const logo=node('img');logo.src='./assets/marcas/'+brandLogos.get(name)+'?v=36';logo.alt=name;
+  const logo=node('img');logo.src='./assets/marcas/'+brandLogos.get(name)+'?v=37';logo.alt=name;
   logo.loading='lazy';logo.className='brand-logo';logoBox.append(logo);
  }else logoBox.append(node('span',name,'brand-text'));
  const caption=node('span',undefined,'brand-caption');caption.append(node('span',name),node('strong',stores.size));
@@ -465,9 +465,9 @@ function logCard(){
  const box=surface('tracking-card');box.append(heading('Acompanhamento de chamados'));const rows=lateCases();box.append(node('p',tracking?rows.length+' problemas com previsão vencida':'Carregando histórico compartilhado…','subtext'));
  const pies=node('div',undefined,'tracking-pies');const buckets=[{label:'Mais de um mês',color:'#ef4444',count:0},{label:'Mais de duas semanas até um mês',color:'#f97316',count:0},{label:'Mais de uma semana até duas',color:'#facc15',count:0},{label:'Mais de um dia até uma semana',color:'#3b82f6',count:0},{label:'Até um dia',color:'#94a3b8',count:0}];
  for(const row of rows){const days=(Date.now()-Math.min(...overdue(row).map(ticket=>ticket.prazo)))/86400000;buckets[days>30?0:days>14?1:days>7?2:days>1?3:4].count++;}
- pies.append(smallPie('Casos por marca',brandSlices(rows)),smallPie('Tempo desde a primeira previsão vencida',buckets.filter(b=>b.count)));box.append(pies);const link=node('a','Abrir log de chamados →','quiet card-link');link.href='./?tela=logs&v=36';box.append(link);return box;
+ pies.append(smallPie('Casos por marca',brandSlices(rows)),smallPie('Tempo desde a primeira previsão vencida',buckets.filter(b=>b.count)));box.append(pies);const link=node('a','Abrir log de chamados →','quiet card-link');link.href='./?tela=logs&v=37';box.append(link);return box;
 }
-function reportCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=relatorio&v=36';link.append(heading('Relatório geral de incidentes'),node('p','Quedas de Link 1 e Link 2 com mais de 24 horas · frequência e dias offline · últimos três meses','subtext'));box.append(link);return box;}
+function reportCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=relatorio&v=37';link.append(heading('Relatório geral de incidentes'),node('p','Quedas de Link 1 e Link 2 com mais de 24 horas · frequência e dias offline · últimos três meses','subtext'));box.append(link);return box;}
 function renderLogs(content){
  document.querySelector('h1').textContent='Log de chamados';document.querySelector('#subtitulo').textContent='Histórico de previsões, analistas e chamados Hughes. Registros anteriores permanecem disponíveis.';
  const box=surface('log-page'),controls=node('div',undefined,'log-filters'),search=node('input'),select=node('select');search.type='search';search.placeholder='Buscar loja, código, chamado ou analista';search.setAttribute('aria-label','Buscar no log');
@@ -506,7 +506,7 @@ function storeIncidentMessage(row,days,replacement=false){
 }
 
 function rankingCard(){
- const card=node('a',undefined,'surface ranking-entry');card.href='./?tela=ranking&v=36';card.append(node('span','↗','monitoring-icon'),heading('Ranking de lojas e links recorrentes'),node('p','Veja quem apresenta mais quedas e mais tempo offline para apoiar pedidos de substituição.','subtext'),node('span','Abrir ranking →','monitoring-open'));return card;
+ const card=node('a',undefined,'surface ranking-entry');card.href='./?tela=ranking&v=37';card.append(node('span','↗','monitoring-icon'),heading('Ranking de lojas e links recorrentes'),node('p','Veja quem apresenta mais quedas e mais tempo offline para apoiar pedidos de substituição.','subtext'),node('span','Abrir ranking →','monitoring-open'));return card;
 }
 let rankingDays=['1','7','30','92'].includes(params.get('dias'))?params.get('dias'):'30',rankingSort='quedas',rankingGroup='link',rankingSearch='';
 function rankingRows(days,group,sort){
@@ -541,7 +541,7 @@ function renderIncidentReport(content){
 let nightQuery='';
 function nightDuration(ms){const minutes=Math.floor(ms/60000);return Math.floor(minutes/60)+' h e '+minutes%60+' min';}
 function nightGroups(){const groups=new Map();for(const night of tracking?.noites??[]){const key=night.host||night.loja;if(!groups.has(key))groups.set(key,{...night,nights:[]});groups.get(key).nights.push(night);}for(const control of tracking?.controles??[]){if(!groups.has(control.host))groups.set(control.host,{host:control.host,loja:control.loja,nights:[]});}return [...groups.values()].filter(store=>!isPaused(store)).sort((a,b)=>b.nights.length-a.nights.length||a.loja.localeCompare(b.loja));}
-function nightCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=desligamentos&v=36';link.append(heading('Relatórios desligamentos indevidos'),node('p','FortiGate sem comunicação por mais de 3 horas entre 22h e 10h · ocorrências por loja e marca','subtext'));box.append(link);return box;}
+function nightCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=desligamentos&v=37';link.append(heading('Relatórios desligamentos indevidos'),node('p','FortiGate sem comunicação por mais de 3 horas entre 22h e 10h · ocorrências por loja e marca','subtext'));box.append(link);return box;}
 function nightDate(value){return value.split('-').reverse().join('/');}
 function nightReport(store){
  const rows=[...store.nights].sort((a,b)=>b.data.localeCompare(a.data));
@@ -568,10 +568,9 @@ function renderNightReport(content){
  const pageHeading=document.querySelector('.page-heading');pageHeading.classList.add('night-page-heading');pageHeading.querySelector('.night-brand-pie')?.remove();
  const uniqueStores=nightGroups().filter(store=>store.nights.length&&!isPaused(store)),pie=smallPie('Lojas por marca · '+uniqueStores.length,brandSlices(uniqueStores),'loja','lojas');pie.classList.add('night-brand-pie');pageHeading.append(pie);document.querySelector('#subtitulo').textContent='Suspeitas de desligamento: FortiGate sem comunicação por mais de 3 horas contínuas entre 22h e 10h (Brasília).';
  const box=surface('report-page'),toolbar=node('div',undefined,'log-filters'),search=node('input'),button=node('button','Gerar relatório por marca','quiet');search.type='search';search.placeholder='Buscar loja, código ou marca';search.setAttribute('aria-label','Buscar loja no relatório noturno');search.value=nightQuery;button.onclick=showBrandNightReport;toolbar.append(search,button);
- const note=node('p','Contagem desde 21/11/2026, sem ocorrências anteriores. Cada loja soma no máximo uma ocorrência por noite, identificada pela data da manhã. Na primeira data, considera-se apenas o período a partir de 00h. Falha de comunicação não comprova desligamento: é necessário conferir energia, equipamento e conectividade.','history-notice');
  const summary=node('p',undefined,'subtext'),scroll=node('div',undefined,'table-scroll'),table=node('table'),head=table.createTHead().insertRow();for(const title of ['Nome da loja','Código da loja','Marca','Noites identificadas','Última ocorrência','Ações'])head.append(node('th',title));const body=table.createTBody();scroll.append(table);
  function update(){const term=search.value.trim().toLowerCase(),all=nightGroups(),rows=all.filter(store=>(store.loja+' '+store.host+' '+brand(store)).toLowerCase().includes(term));body.replaceChildren();for(const store of rows){const latest=[...store.nights].sort((a,b)=>b.data.localeCompare(a.data))[0],tr=body.insertRow(),name=tr.insertCell();name.append(node('strong',storeName(store)));if(isPaused(store))name.append(node('small','Monitoramento Pausado'));for(const value of [store.host+(store.host==='SOM078F1'?' (Loja Duplicada)':''),brandPalette.get(brand(store))?.label??brand(store),store.nights.length,latest?nightDate(latest.data):'—'])tr.insertCell().textContent=value;const action=node('button','Gerar relatório','quiet');action.onclick=()=>nightReport(store);const log=node('button','Log da loja','quiet'),actions=node('div',undefined,'tracking-actions');log.onclick=()=>showNightLog(store);action.disabled=!store.nights.length;actions.append(action,log,...monitoringButtons(store).children);tr.insertCell().append(actions);}summary.textContent=rows.length+' lojas · '+rows.reduce((sum,store)=>sum+store.nights.length,0)+' ocorrências desde o início da contagem.';if(!rows.length){const cell=body.insertRow().insertCell();cell.colSpan=6;cell.textContent='Nenhuma ocorrência registrada para este filtro.';}}
- search.oninput=()=>{nightQuery=search.value;update();};box.append(toolbar,note,summary,scroll);content.append(box);update();
+ search.oninput=()=>{nightQuery=search.value;update();};box.append(toolbar,summary,scroll);content.append(box);update();
 }
 
 let pausedQuery='';
@@ -583,7 +582,7 @@ function monitoringCards(){
   ['Relatório geral de incidentes',reportRows(92).length,'links com quedas superiores a 24 h','relatorio','↗'],
   ['Relatórios desligamentos indevidos',nightGroups().filter(store=>store.nights.length&&!isPaused(store)).length,'lojas com ocorrências noturnas','desligamentos','☾'],
   ['Monitoramento lojas pausadas',paused.length,'lojas com monitoramento pausado','pausadas','Ⅱ'],
- ]){const card=node('a',undefined,'surface monitoring-card');card.href='./?tela='+page+'&v=36';card.append(node('span',icon,'monitoring-icon'),heading(title),node('strong',tracking?total:'—','monitoring-total'),node('p',caption,'subtext'),node('span','Abrir →','monitoring-open'));grid.append(card);}
+ ]){const card=node('a',undefined,'surface monitoring-card');card.href='./?tela='+page+'&v=37';card.append(node('span',icon,'monitoring-icon'),heading(title),node('strong',tracking?total:'—','monitoring-total'),node('p',caption,'subtext'),node('span','Abrir →','monitoring-open'));grid.append(card);}
  return grid;
 }
 function renderPausedStores(content){
@@ -622,7 +621,7 @@ function render(){
  const subtitle=document.querySelector('#subtitulo'),title=document.querySelector('h1');
  const stores=new Set(incidents.map(row=>row.host||row.loja)).size;
  if(['logs','relatorio','desligamentos','pausadas','ranking'].includes(trackingPage)){
-  const back=node('a','‹ Visão geral','back');back.href='./?v=36';content.append(back);
+  const back=node('a','‹ Visão geral','back');back.href='./?v=37';content.append(back);
   if(trackingPage==='ranking')renderRanking(content);else if(trackingPage==='pausadas')renderPausedStores(content);else if(trackingPage==='logs'){content.append(logCard());renderLogs(content);}else if(trackingPage==='desligamentos')renderNightReport(content);else renderIncidentReport(content);
  }else if(brandPage||problemPage){
   const valid=problemPage
@@ -633,7 +632,7 @@ function render(){
   const rows=dualPage?dualLinkRows():rowsFor().filter(row=>problemPage?matchesProblem(row):brand(row)===requestedBrand);
   subtitle.textContent=new Set(rows.map(row=>row.host||row.loja)).size+' lojas afetadas · '+rows.length+' ocorrências abertas';
   let back=document.querySelector('.back');
-  if(!back){back=node('a','‹ Visão geral','back');back.href=problemPage?'./?v=36#tipos-problemas':'./?v=36#lojas';document.querySelector('.page-heading').before(back);}
+  if(!back){back=node('a','‹ Visão geral','back');back.href=problemPage?'./?v=37#tipos-problemas':'./?v=37#lojas';document.querySelector('.page-heading').before(back);}
   const summary=node('div',undefined,'brand-summary');
   for(const [label,value]of [['Ocorrências abertas',rows.length],['Lojas afetadas',new Set(rows.map(row=>row.host||row.loja)).size],['Caso mais antigo',rows.length?age(rows[0]):'—']]){
     const card=surface('detail-kpi');card.append(node('p',label),node('strong',value));summary.append(card);
@@ -642,7 +641,7 @@ function render(){
  }else if(detail){
   if(!category){title.textContent='Prioridade indisponível';return;}
   title.textContent=category.title;subtitle.textContent='Ocorrências abertas nas lojas desta prioridade';
-  let back=document.querySelector('.back');if(!back){back=node('a','‹ Visão geral','back');back.href='./?from='+period+'&v=36';document.querySelector('.page-heading').before(back);}
+  let back=document.querySelector('.back');if(!back){back=node('a','‹ Visão geral','back');back.href='./?from='+period+'&v=37';document.querySelector('.page-heading').before(back);}
   const titleBox=title.parentElement;if(!titleBox.parentElement.classList.contains('detail-title')){const wrapper=colored(node('div',undefined,'detail-title'),category);titleBox.before(wrapper);wrapper.append(node('span','⚠','detail-icon'),titleBox);}
   const rows=rowsFor(category),top=node('div',undefined,'detail-top'),kpis=node('div',undefined,'detail-kpis');
   const counts=[['Ocorrências agora',rows.length],['Lojas afetadas',new Set(rows.map(row=>row.host||row.loja)).size],['Mais antiga',rows.length?age(rows[0]):'—'],['Mais recente',rows.length?age(rows.at(-1)):'—']];
@@ -676,7 +675,7 @@ if(!login){
   document.querySelector('.nav a[href$="#links"]').onclick=event=>{
     event.preventDefault();
     const content=document.querySelector('#loja-conteudo');content.replaceChildren(heading('Links do monitoramento'));
-    for(const [label,url]of [['Visão geral','./?v=36'],['Lojas e ocorrências','./?v=36#ocorrencias'],['Histórico dos problemas','./?v=36#historico']]){
+    for(const [label,url]of [['Visão geral','./?v=37'],['Lojas e ocorrências','./?v=37#ocorrencias'],['Histórico dos problemas','./?v=37#historico']]){
       const link=node('a',label,'dialog-case');link.href=url;link.style.display='block';content.append(link);
     }
     document.querySelector('#loja-dialog').showModal();
