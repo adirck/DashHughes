@@ -55,7 +55,7 @@ if(login){
   event.preventDefault();const button=login.querySelector('button');button.disabled=true;
   try{
    const data=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:login.elements.user.value,password:login.elements.password.value})});
-   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=40');
+   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=41');
   }catch(error){status.textContent=error.message;}finally{button.disabled=false;login.elements.password.value='';}
  });
 }
@@ -197,7 +197,7 @@ function statCards(){
  for(const cat of categories){
   const rows=rowsFor(cat),slices=brandSlices(rows),total=rows.length;
   const card=colored(node('a',undefined,'stat-card'),cat);
-  card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=40';
+  card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=41';
   card.setAttribute('aria-label',cat.title+' · '+total+' ocorrências');
   const label=node('div',undefined,'stat-label');label.append(node('span',undefined,'dot'),node('span',cat.short));
   const metric=node('div',undefined,'stat-value'+(total===0?' zero':''));
@@ -301,7 +301,7 @@ function distribution(){
  const dualRows=dualLinkRows(),otherIndex=top.findIndex(([name])=>name==='Outros');top.splice(otherIndex<0?top.length:otherIndex,0,[dualProblem,dualRows.length]);
  const list=node('div',undefined,'distribution-list'),maximum=Math.max(1,...top.map(row=>row[1]));
  for(const [name,count]of top){const item=node('a',undefined,'problem-link');
- item.href='./problema.html?v=40&'+(name==='Outros'
+ item.href='./problema.html?v=41&'+(name==='Outros'
   ? 'grupo=outros&excluir='+encodeURIComponent(JSON.stringify(all.slice(0,6).map(row=>row[0])))
   : 'problema='+encodeURIComponent(name));
  item.setAttribute('aria-label',name+' · '+count+(name===dualProblem?' lojas':' ocorrências'));
@@ -331,11 +331,11 @@ function brandPanel(){
  const brands=new Map();for(const row of incidents){const name=brand(row);if(!brands.has(name))brands.set(name,new Set());brands.get(name).add(row.host||row.loja);}
  const grid=node('div',undefined,'brand-grid');grid.style.marginTop='14px';
  for(const [name,stores]of [...brands].sort((a,b)=>b[1].size-a[1].size)){const chip=node('a',undefined,'brand-chip brand-link');
- chip.href='./marca.html?marca='+encodeURIComponent(name)+'&v=40';
+ chip.href='./marca.html?marca='+encodeURIComponent(name)+'&v=41';
  chip.setAttribute('aria-label',name+' · '+stores.size+' lojas afetadas');
  const logoBox=node('span',undefined,'brand-logo-box');
  if(brandLogos.has(name)){
-  const logo=node('img');logo.src='./assets/marcas/'+brandLogos.get(name)+'?v=40';logo.alt=name;
+  const logo=node('img');logo.src='./assets/marcas/'+brandLogos.get(name)+'?v=41';logo.alt=name;
   logo.loading='lazy';logo.className='brand-logo';logoBox.append(logo);
  }else logoBox.append(node('span',name,'brand-text'));
  const caption=node('span',undefined,'brand-caption');caption.append(node('span',name),node('strong',stores.size));
@@ -465,9 +465,9 @@ function logCard(){
  const box=surface('tracking-card');box.append(heading('Acompanhamento de chamados'));const rows=lateCases();box.append(node('p',tracking?rows.length+' problemas com previsão vencida':'Carregando histórico compartilhado…','subtext'));
  const pies=node('div',undefined,'tracking-pies');const buckets=[{label:'Mais de um mês',color:'#ef4444',count:0},{label:'Mais de duas semanas até um mês',color:'#f97316',count:0},{label:'Mais de uma semana até duas',color:'#facc15',count:0},{label:'Mais de um dia até uma semana',color:'#3b82f6',count:0},{label:'Até um dia',color:'#94a3b8',count:0}];
  for(const row of rows){const days=(Date.now()-Math.min(...overdue(row).map(ticket=>ticket.prazo)))/86400000;buckets[days>30?0:days>14?1:days>7?2:days>1?3:4].count++;}
- pies.append(smallPie('Casos por marca',brandSlices(rows)),smallPie('Tempo desde a primeira previsão vencida',buckets.filter(b=>b.count)));box.append(pies);const link=node('a','Abrir log de chamados →','quiet card-link');link.href='./?tela=logs&v=40';box.append(link);return box;
+ pies.append(smallPie('Casos por marca',brandSlices(rows)),smallPie('Tempo desde a primeira previsão vencida',buckets.filter(b=>b.count)));box.append(pies);const link=node('a','Abrir log de chamados →','quiet card-link');link.href='./?tela=logs&v=41';box.append(link);return box;
 }
-function reportCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=relatorio&v=40';link.append(heading('Relatório geral de incidentes'),node('p','Quedas de Link 1 e Link 2 com mais de 24 horas · frequência e dias offline · últimos três meses','subtext'));box.append(link);return box;}
+function reportCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=relatorio&v=41';link.append(heading('Relatório geral de incidentes'),node('p','Quedas de Link 1 e Link 2 com mais de 24 horas · frequência e dias offline · últimos três meses','subtext'));box.append(link);return box;}
 function renderLogs(content){
  document.querySelector('h1').textContent='Log de chamados';document.querySelector('#subtitulo').textContent='Histórico de previsões, analistas e chamados Hughes. Registros anteriores permanecem disponíveis.';
  const box=surface('log-page'),controls=node('div',undefined,'log-filters'),search=node('input'),select=node('select');search.type='search';search.placeholder='Buscar loja, código, chamado ou analista';search.setAttribute('aria-label','Buscar no log');
@@ -506,8 +506,44 @@ function storeIncidentMessage(row,days,replacement=false){
 }
 
 function rankingCard(){
- const card=node('a',undefined,'surface ranking-entry');card.href='./?tela=ranking&v=40';card.append(node('span','↗','monitoring-icon'),heading('Ranking de lojas e links recorrentes'),node('p','Veja quem apresenta mais quedas e mais tempo offline para apoiar pedidos de substituição.','subtext'),node('span','Abrir ranking →','monitoring-open'));return card;
+ const card=node('a',undefined,'surface ranking-entry');card.href='./?tela=ranking&v=41';card.append(node('span','↗','monitoring-icon'),heading('Ranking de lojas e links recorrentes'),node('p','Veja quem apresenta mais quedas e mais tempo offline para apoiar pedidos de substituição.','subtext'),node('span','Abrir ranking →','monitoring-open'));return card;
 }
+// Dados administrativos compartilhados, carregados somente na página de cadastro.
+let cadastro={lojas:[],supervisores:[]},cadastroQuery='';
+function field(form,label,value,max=160){const wrap=node('label',label),input=node('input');input.value=value??'';input.maxLength=max;wrap.append(input);form.append(wrap);return input;}
+function editStoreCadastro(row){
+ const content=document.querySelector('#loja-conteudo');content.replaceChildren(heading('Editar cadastro da loja'),node('p',storeName(row)+' · '+row.host,'subtext'));
+ const form=node('form',undefined,'forecast-form'),inputs={};
+ for(const [key,label,max]of [['link1Operadora','Link 1 · Operadora',120],['link1Velocidade','Link 1 · Velocidade (ex.: 100 Mbps)',80],['link2Operadora','Link 2 · Operadora',120],['link2Velocidade','Link 2 · Velocidade (ex.: 100 Mbps)',80],['gerente','Nome da gerente / do gerente',160]])inputs[key]=field(form,label,row[key],max);
+ const label=node('label','Supervisora / Supervisor'),select=node('select'),empty=node('option','Não informado');empty.value='';select.append(empty);
+ for(const person of [...cadastro.supervisores].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))){const option=node('option',person.nome);option.value=person.id;select.append(option);}select.value=row.supervisorId??'';label.append(select);form.append(label);
+ const feedback=node('p',undefined,'status-message');feedback.setAttribute('role','status');const save=node('button','Salvar cadastro','primary-action');save.type='submit';form.append(save,feedback);
+ form.onsubmit=async event=>{event.preventDefault();save.disabled=true;feedback.textContent='Salvando…';try{const body={host:row.host,versao:row.versao,supervisorId:select.value};for(const [key,input]of Object.entries(inputs))body[key]=input.value.trim();const saved=await api('/api/cadastro/loja',{...authOptions(),method:'POST',headers:{...authOptions().headers,'Content-Type':'application/json'},body:JSON.stringify(body)});cadastro.lojas=cadastro.lojas.map(item=>item.host===saved.host?saved:item);document.querySelector('#loja-dialog').close();render();status.textContent='Cadastro da loja salvo.';}catch(error){feedback.textContent=error.message;}finally{save.disabled=false;}};
+ content.append(form);document.querySelector('#loja-dialog').showModal();
+}
+function supervisorDialog(person=null){
+ const content=document.querySelector('#loja-conteudo');content.replaceChildren(heading('Cadastro de supervisoras e supervisores'));
+ const form=node('form',undefined,'forecast-form'),name=field(form,'Nome da supervisora ou supervisor',person?.nome);name.required=true;
+ const save=node('button',person?'Salvar alterações':'Cadastrar responsável','primary-action');save.type='submit';const feedback=node('p',undefined,'status-message');feedback.setAttribute('role','status');form.append(save,feedback);
+ form.onsubmit=async event=>{event.preventDefault();save.disabled=true;try{const saved=await api('/api/cadastro/supervisor',{...authOptions(),method:'POST',headers:{...authOptions().headers,'Content-Type':'application/json'},body:JSON.stringify({id:person?.id??crypto.randomUUID(),nome:name.value.trim(),versao:person?.versao})});cadastro.supervisores=[...cadastro.supervisores.filter(item=>item.id!==saved.id),saved];render();supervisorDialog();document.querySelector('#loja-conteudo [role="status"]').textContent='Responsável salvo.';}catch(error){feedback.textContent=error.message;}finally{save.disabled=false;}};
+ content.append(form,heading('Responsáveis cadastrados',3));
+ for(const item of [...cadastro.supervisores].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))){const line=node('div',undefined,'ticket-entry'),edit=node('button','Editar','quiet');edit.type='button';edit.onclick=()=>supervisorDialog(item);line.append(node('strong',item.nome),edit);content.append(line);}
+ if(!cadastro.supervisores.length)content.append(node('p','Nenhum responsável cadastrado.','empty'));
+ const dialog=document.querySelector('#loja-dialog');if(!dialog.open)dialog.showModal();
+}
+function renderCadastro(content){
+ document.querySelector('h1').textContent='Cadastro Lojas';document.querySelector('#subtitulo').textContent='Lojas da fonte de monitoramento, incluindo unidades sem incidentes e com monitoramento pausado.';
+ const box=surface('report-page'),tools=node('div',undefined,'log-filters'),search=node('input'),supervisors=node('button','Cadastrar supervisoras e supervisores','quiet'),summary=node('p',undefined,'subtext'),list=node('div',undefined,'table-scroll');
+ search.type='search';search.placeholder='Buscar loja, código, marca ou responsável';search.setAttribute('aria-label','Buscar no cadastro de lojas');search.value=cadastroQuery;supervisors.onclick=()=>supervisorDialog();tools.append(search,supervisors);
+ function update(){const term=cadastroQuery.trim().toLocaleLowerCase('pt-BR'),people=new Map(cadastro.supervisores.map(item=>[item.id,item.nome]));const rows=[...cadastro.lojas].filter(row=>[storeName(row),row.host,brand(row),row.gerente,people.get(row.supervisorId)].join(' ').toLocaleLowerCase('pt-BR').includes(term)).sort((a,b)=>storeName(a).localeCompare(storeName(b),'pt-BR'));
+  summary.textContent=rows.length+' de '+cadastro.lojas.length+' lojas';const table=node('table'),head=table.createTHead().insertRow();for(const label of ['Loja / Código','Marca','Link 1','Link 2','Gerente','Supervisora / Supervisor','Ações'])head.append(node('th',label));const body=table.createTBody();
+  for(const row of rows){const tr=body.insertRow(),name=tr.insertCell();name.append(node('strong',storeName(row)),node('small',row.host+(row.host==='SOM078F1'?' · Loja Duplicada':'')));tr.insertCell().textContent=brand(row);
+   for(const n of [1,2]){const cell=tr.insertCell();cell.append(node('div',row['link'+n+'Operadora']||'Operadora não informada'),node('small',row['link'+n+'Velocidade']||'Velocidade não informada'));}
+   tr.insertCell().textContent=row.gerente||'Não informado';const supervisor=tr.insertCell(),choose=node('button',people.get(row.supervisorId)||'Selecionar responsável','quiet');choose.onclick=()=>editStoreCadastro(row);supervisor.append(choose);const edit=node('button','Editar cadastro','quiet');edit.onclick=()=>editStoreCadastro(row);tr.insertCell().append(edit);
+  }if(!rows.length){const cell=body.insertRow().insertCell();cell.colSpan=7;cell.textContent='Nenhuma loja encontrada.';}list.replaceChildren(table);
+ }search.oninput=()=>{cadastroQuery=search.value;update();};box.append(tools,summary,list);content.append(box);update();
+}
+
 // Lista apenas encerramentos observados, sem afirmar reparo técnico confirmado.
 let repairedDays='1',repairedQuery='';
 function repairedRows(days,now=Date.now()){
@@ -564,7 +600,7 @@ function renderIncidentReport(content){
 let nightQuery='';
 function nightDuration(ms){const minutes=Math.floor(ms/60000);return Math.floor(minutes/60)+' h e '+minutes%60+' min';}
 function nightGroups(){const groups=new Map();for(const night of tracking?.noites??[]){const key=night.host||night.loja;if(!groups.has(key))groups.set(key,{...night,nights:[]});groups.get(key).nights.push(night);}for(const control of tracking?.controles??[]){if(!groups.has(control.host))groups.set(control.host,{host:control.host,loja:control.loja,nights:[]});}return [...groups.values()].filter(store=>!isPaused(store)).sort((a,b)=>b.nights.length-a.nights.length||a.loja.localeCompare(b.loja));}
-function nightCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=desligamentos&v=40';link.append(heading('Relatórios desligamentos indevidos'),node('p','FortiGate sem comunicação por mais de 3 horas entre 22h e 10h · ocorrências por loja e marca','subtext'));box.append(link);return box;}
+function nightCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=desligamentos&v=41';link.append(heading('Relatórios desligamentos indevidos'),node('p','FortiGate sem comunicação por mais de 3 horas entre 22h e 10h · ocorrências por loja e marca','subtext'));box.append(link);return box;}
 function nightDate(value){return value.split('-').reverse().join('/');}
 function nightReport(store){
  const rows=[...store.nights].sort((a,b)=>b.data.localeCompare(a.data));
@@ -605,7 +641,7 @@ function monitoringCards(){
   ['Relatório geral de incidentes',reportRows(92).length,'links com quedas superiores a 24 h','relatorio','↗'],
   ['Relatórios desligamentos indevidos',nightGroups().filter(store=>store.nights.length&&!isPaused(store)).length,'lojas com ocorrências noturnas','desligamentos','☾'],
   ['Monitoramento lojas pausadas',paused.length,'lojas com monitoramento pausado','pausadas','Ⅱ'],
- ]){const card=node('a',undefined,'surface monitoring-card');card.href='./?tela='+page+'&v=40';card.append(node('span',icon,'monitoring-icon'),heading(title),node('strong',tracking?total:'—','monitoring-total'),node('p',caption,'subtext'),node('span','Abrir →','monitoring-open'));grid.append(card);}
+ ]){const card=node('a',undefined,'surface monitoring-card');card.href='./?tela='+page+'&v=41';card.append(node('span',icon,'monitoring-icon'),heading(title),node('strong',tracking?total:'—','monitoring-total'),node('p',caption,'subtext'),node('span','Abrir →','monitoring-open'));grid.append(card);}
  return grid;
 }
 function renderPausedStores(content){
@@ -643,9 +679,9 @@ function render(){
  const content=document.querySelector('#conteudo');content.replaceChildren();
  const subtitle=document.querySelector('#subtitulo'),title=document.querySelector('h1');
  const stores=new Set(incidents.map(row=>row.host||row.loja)).size;
- if(['logs','relatorio','desligamentos','pausadas','ranking','reparados'].includes(trackingPage)){
-  const back=node('a','‹ Visão geral','back');back.href='./?v=40';content.append(back);
-  if(trackingPage==='reparados')renderRepaired(content);else if(trackingPage==='ranking')renderRanking(content);else if(trackingPage==='pausadas')renderPausedStores(content);else if(trackingPage==='logs'){content.append(logCard());renderLogs(content);}else if(trackingPage==='desligamentos')renderNightReport(content);else renderIncidentReport(content);
+ if(['logs','relatorio','desligamentos','pausadas','ranking','reparados','cadastro'].includes(trackingPage)){
+  const back=node('a','‹ Visão geral','back');back.href='./?v=41';content.append(back);
+  if(trackingPage==='cadastro')renderCadastro(content);else if(trackingPage==='reparados')renderRepaired(content);else if(trackingPage==='ranking')renderRanking(content);else if(trackingPage==='pausadas')renderPausedStores(content);else if(trackingPage==='logs'){content.append(logCard());renderLogs(content);}else if(trackingPage==='desligamentos')renderNightReport(content);else renderIncidentReport(content);
  }else if(brandPage||problemPage){
   const valid=problemPage
    ? isOtherProblem||(requestedProblem.length>0&&requestedProblem.length<=500)
@@ -655,7 +691,7 @@ function render(){
   const rows=dualPage?dualLinkRows():rowsFor().filter(row=>problemPage?matchesProblem(row):brand(row)===requestedBrand);
   subtitle.textContent=new Set(rows.map(row=>row.host||row.loja)).size+' lojas afetadas · '+rows.length+' ocorrências abertas';
   let back=document.querySelector('.back');
-  if(!back){back=node('a','‹ Visão geral','back');back.href=problemPage?'./?v=40#tipos-problemas':'./?v=40#lojas';document.querySelector('.page-heading').before(back);}
+  if(!back){back=node('a','‹ Visão geral','back');back.href=problemPage?'./?v=41#tipos-problemas':'./?v=41#lojas';document.querySelector('.page-heading').before(back);}
   const summary=node('div',undefined,'brand-summary');
   for(const [label,value]of [['Ocorrências abertas',rows.length],['Lojas afetadas',new Set(rows.map(row=>row.host||row.loja)).size],['Caso mais antigo',rows.length?age(rows[0]):'—']]){
     const card=surface('detail-kpi');card.append(node('p',label),node('strong',value));summary.append(card);
@@ -664,7 +700,7 @@ function render(){
  }else if(detail){
   if(!category){title.textContent='Prioridade indisponível';return;}
   title.textContent=category.title;subtitle.textContent='Ocorrências abertas nas lojas desta prioridade';
-  let back=document.querySelector('.back');if(!back){back=node('a','‹ Visão geral','back');back.href='./?from='+period+'&v=40';document.querySelector('.page-heading').before(back);}
+  let back=document.querySelector('.back');if(!back){back=node('a','‹ Visão geral','back');back.href='./?from='+period+'&v=41';document.querySelector('.page-heading').before(back);}
   const titleBox=title.parentElement;if(!titleBox.parentElement.classList.contains('detail-title')){const wrapper=colored(node('div',undefined,'detail-title'),category);titleBox.before(wrapper);wrapper.append(node('span','⚠','detail-icon'),titleBox);}
   const rows=rowsFor(category),top=node('div',undefined,'detail-top'),kpis=node('div',undefined,'detail-kpis');
   const counts=[['Ocorrências agora',rows.length],['Lojas afetadas',new Set(rows.map(row=>row.host||row.loja)).size],['Mais antiga',rows.length?age(rows[0]):'—'],['Mais recente',rows.length?age(rows.at(-1)):'—']];
@@ -682,6 +718,7 @@ async function refresh(){
  clearTimeout(timer);activeRequest?.abort();const controller=new AbortController();activeRequest=controller;
  try{
   const options={headers:{Authorization:'Bearer '+sessionStorage.getItem(sessionKey)},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(45000)])};
+  if(trackingPage==='cadastro'){cadastro=await api('/api/cadastro',options);if(controller.signal.aborted)return;updated=Date.now();status.textContent='';render();return;}
   const [summary,problems]=await Promise.all([api('/api/resumo?from='+period+'&to=now',options),api('/api/problemas',options)]);
   if(controller.signal.aborted)return;panels=summary.paineis;allIncidents=problems.ocorrencias;tracking=problems.acompanhamento??tracking;incidents=visibleIncidents();updated=Date.parse(summary.atualizadoEm);status.textContent=tracking?.aviso??(tracking?.ultimaColeta&&Date.now()-tracking.ultimaColeta>900000?'O histórico está sem atualização há mais de 15 minutos. Confira a última coleta antes de usar o relatório.':'');render();
  }catch(error){if(!controller.signal.aborted)status.textContent=error.message==='Failed to fetch'?'Não foi possível atualizar. Exibindo os últimos dados.':error.message;}
@@ -698,7 +735,7 @@ if(!login){
   document.querySelector('.nav a[href$="#links"]').onclick=event=>{
     event.preventDefault();
     const content=document.querySelector('#loja-conteudo');content.replaceChildren(heading('Links do monitoramento'));
-    for(const [label,url]of [['Visão geral','./?v=40'],['Lojas e ocorrências','./?v=40#ocorrencias'],['Histórico dos problemas','./?v=40#historico']]){
+    for(const [label,url]of [['Visão geral','./?v=41'],['Lojas e ocorrências','./?v=41#ocorrencias'],['Histórico dos problemas','./?v=41#historico']]){
       const link=node('a',label,'dialog-case');link.href=url;link.style.display='block';content.append(link);
     }
     document.querySelector('#loja-dialog').showModal();
