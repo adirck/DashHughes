@@ -55,7 +55,7 @@ if(login){
   event.preventDefault();const button=login.querySelector('button');button.disabled=true;
   try{
    const data=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:login.elements.user.value,password:login.elements.password.value})});
-   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=38');
+   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=39');
   }catch(error){status.textContent=error.message;}finally{button.disabled=false;login.elements.password.value='';}
  });
 }
@@ -301,7 +301,7 @@ function distribution(){
  const dualRows=dualLinkRows(),otherIndex=top.findIndex(([name])=>name==='Outros');top.splice(otherIndex<0?top.length:otherIndex,0,[dualProblem,dualRows.length]);
  const list=node('div',undefined,'distribution-list'),maximum=Math.max(1,...top.map(row=>row[1]));
  for(const [name,count]of top){const item=node('a',undefined,'problem-link');
- item.href='./problema.html?v=38&'+(name==='Outros'
+ item.href='./problema.html?v=39&'+(name==='Outros'
   ? 'grupo=outros&excluir='+encodeURIComponent(JSON.stringify(all.slice(0,6).map(row=>row[0])))
   : 'problema='+encodeURIComponent(name));
  item.setAttribute('aria-label',name+' · '+count+(name===dualProblem?' lojas':' ocorrências'));
@@ -335,7 +335,7 @@ function brandPanel(){
  chip.setAttribute('aria-label',name+' · '+stores.size+' lojas afetadas');
  const logoBox=node('span',undefined,'brand-logo-box');
  if(brandLogos.has(name)){
-  const logo=node('img');logo.src='./assets/marcas/'+brandLogos.get(name)+'?v=38';logo.alt=name;
+  const logo=node('img');logo.src='./assets/marcas/'+brandLogos.get(name)+'?v=39';logo.alt=name;
   logo.loading='lazy';logo.className='brand-logo';logoBox.append(logo);
  }else logoBox.append(node('span',name,'brand-text'));
  const caption=node('span',undefined,'brand-caption');caption.append(node('span',name),node('strong',stores.size));
@@ -621,7 +621,7 @@ function render(){
  const subtitle=document.querySelector('#subtitulo'),title=document.querySelector('h1');
  const stores=new Set(incidents.map(row=>row.host||row.loja)).size;
  if(['logs','relatorio','desligamentos','pausadas','ranking'].includes(trackingPage)){
-  const back=node('a','‹ Visão geral','back');back.href='./?v=38';content.append(back);
+  const back=node('a','‹ Visão geral','back');back.href='./?v=39';content.append(back);
   if(trackingPage==='ranking')renderRanking(content);else if(trackingPage==='pausadas')renderPausedStores(content);else if(trackingPage==='logs'){content.append(logCard());renderLogs(content);}else if(trackingPage==='desligamentos')renderNightReport(content);else renderIncidentReport(content);
  }else if(brandPage||problemPage){
   const valid=problemPage
@@ -632,7 +632,7 @@ function render(){
   const rows=dualPage?dualLinkRows():rowsFor().filter(row=>problemPage?matchesProblem(row):brand(row)===requestedBrand);
   subtitle.textContent=new Set(rows.map(row=>row.host||row.loja)).size+' lojas afetadas · '+rows.length+' ocorrências abertas';
   let back=document.querySelector('.back');
-  if(!back){back=node('a','‹ Visão geral','back');back.href=problemPage?'./?v=38#tipos-problemas':'./?v=38#lojas';document.querySelector('.page-heading').before(back);}
+  if(!back){back=node('a','‹ Visão geral','back');back.href=problemPage?'./?v=39#tipos-problemas':'./?v=39#lojas';document.querySelector('.page-heading').before(back);}
   const summary=node('div',undefined,'brand-summary');
   for(const [label,value]of [['Ocorrências abertas',rows.length],['Lojas afetadas',new Set(rows.map(row=>row.host||row.loja)).size],['Caso mais antigo',rows.length?age(rows[0]):'—']]){
     const card=surface('detail-kpi');card.append(node('p',label),node('strong',value));summary.append(card);
@@ -675,7 +675,7 @@ if(!login){
   document.querySelector('.nav a[href$="#links"]').onclick=event=>{
     event.preventDefault();
     const content=document.querySelector('#loja-conteudo');content.replaceChildren(heading('Links do monitoramento'));
-    for(const [label,url]of [['Visão geral','./?v=38'],['Lojas e ocorrências','./?v=38#ocorrencias'],['Histórico dos problemas','./?v=38#historico']]){
+    for(const [label,url]of [['Visão geral','./?v=39'],['Lojas e ocorrências','./?v=39#ocorrencias'],['Histórico dos problemas','./?v=39#historico']]){
       const link=node('a',label,'dialog-case');link.href=url;link.style.display='block';content.append(link);
     }
     document.querySelector('#loja-dialog').showModal();
