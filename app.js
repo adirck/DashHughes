@@ -58,7 +58,7 @@ if(login){
   event.preventDefault();const button=login.querySelector('button');button.disabled=true;
   try{
    const data=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:login.elements.user.value,password:login.elements.password.value})});
-   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=49');
+   sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=50');
   }catch(error){status.textContent=error.message;}finally{button.disabled=false;login.elements.password.value='';}
  });
 }
@@ -200,7 +200,7 @@ function statCards(){
  for(const cat of categories){
   const rows=rowsFor(cat),slices=brandSlices(rows),total=rows.length;
   const card=colored(node('a',undefined,'stat-card'),cat);
-  card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=49';
+  card.href='./detalhe.html?id='+cat.id+'&from='+period+'&v=50';
   card.setAttribute('aria-label',cat.title+' · '+total+' ocorrências');
   const label=node('div',undefined,'stat-label');label.append(node('span',undefined,'dot'),node('span',cat.short));
   const metric=node('div',undefined,'stat-value'+(total===0?' zero':''));
@@ -296,29 +296,29 @@ function dualLinkRows(){
 // Reincidência: uma nova queda da mesma porta após um encerramento observado.
 let recurrenceDays='1',recurrenceQuery='';
 function recurrenceRows(days=1,now=Date.now()){
- const groups=new Map();
- for(const row of incidents){const match=/^Link ([12]) indisponível$/.exec(simple(row.problema));if(!match||isPaused(row))continue;const start=Number.isFinite(row.inicio)?row.inicio:timestamp(row.horario);if(!Number.isFinite(start)||start>now)continue;
-  const prior=(tracking?.eventos??[]).filter(event=>(event.host||event.loja)===(row.host||row.loja)&&simple(event.problema)===simple(row.problema)&&Number.isFinite(event.inicio)&&event.inicio<start&&Number.isFinite(event.fim)&&event.fim<=start&&start-event.fim<=Number(days)*86400000).sort((a,b)=>b.fim-a.fim)[0];if(!prior)continue;
-  if((storeControl(row)?.intervalos??[]).some(([a,b])=>a<start&&(b??now)>prior.fim))continue;
-  const key=(row.host||row.loja)+'|'+match[1],entry={...row,link:match[1],inicio:start,anterior:prior,intervalo:start-prior.fim};if(!groups.has(key)||start<groups.get(key).inicio)groups.set(key,entry);
- }return [...groups.values()].sort((a,b)=>b.inicio-a.inicio);
+ const groups=new Map(),from=now-Number(days)*86400000,keys=new Set();
+ for(const event of [...(tracking?.eventos??[]),...incidents]){
+  const match=/^Link ([12]) indisponível$/.exec(simple(event.problema));if(!match||isPaused(event))continue;const start=Number.isFinite(event.inicio)?event.inicio:timestamp(event.horario);if(!Number.isFinite(start)||start<from||start>now)continue;
+  if((storeControl(event)?.intervalos??[]).some(([a,b])=>a<=start&&(b??now)>start))continue;
+  const key=(event.host||event.loja)+'|'+match[1],unique=key+'|'+start;if(keys.has(unique))continue;keys.add(unique);if(!groups.has(key))groups.set(key,{...event,link:match[1],events:[]});groups.get(key).events.push({...event,inicio:start});
+ }
+ return [...groups.values()].filter(row=>row.events.length>=2).map(row=>{
+  row.events.sort((a,b)=>b.inicio-a.inicio);row.inicio=row.events[0].inicio;row.quedas=row.events.length;
+  const spans=row.events.flatMap(event=>monitoredSpans(event,now)).map(([a,b])=>[Math.max(a,from),Math.min(b,now)]).filter(([a,b])=>b>a).sort((a,b)=>a[0]-b[0]);let last=null,total=0;for(const span of spans){if(last&&span[0]<=last[1])last[1]=Math.max(last[1],span[1]);else{if(last)total+=last[1]-last[0];last=[...span];}}if(last)total+=last[1]-last[0];row.totalOffline=total;
+  row.aberto=incidents.some(item=>(item.host||item.loja)===(row.host||row.loja)&&simple(item.problema)==='Link '+row.link+' indisponível');return row;
+ }).sort((a,b)=>b.quedas-a.quedas||b.totalOffline-a.totalOffline||storeName(a).localeCompare(storeName(b),'pt-BR'));
 }
-function linkFallCount(row,days,now=Date.now()){
- const keys=new Set(),start=now-Number(days)*86400000;
- for(const event of [...(tracking?.eventos??[]),...incidents]){if((event.host||event.loja)!==(row.host||row.loja)||simple(event.problema)!=='Link '+row.link+' indisponível')continue;const time=Number.isFinite(event.inicio)?event.inicio:timestamp(event.horario);if(!Number.isFinite(time)||time<start||time>now)continue;keys.add((event.host||event.loja)+'|'+row.link+'|'+time);}
- return keys.size;
-}
-function recurrenceMessage(rows,days){
- const lines=['Olá, equipe Hughes.','','REINCIDÊNCIA APÓS NORMALIZAÇÃO','Levantamento: '+fullDates.format(Date.now())+' (horário de Brasília).','Critério: nova queda da mesma porta em até '+({'1':'24 horas','7':'7 dias','30':'30 dias'}[days])+' após a normalização observada, ainda em aberto.','Lojas afetadas: '+new Set(rows.map(row=>row.host||row.loja)).size,'Portas com reincidência: '+rows.length,''];
- if(!rows.length)lines.push('Nenhuma reincidência identificada no histórico disponível.','');
- rows.forEach((row,index)=>lines.push((index+1)+'. Loja: '+storeName(row),'Código: '+row.host,'Marca: '+(brandPalette.get(brand(row))?.label??brand(row)),'Porta: '+portName(row.link),'Quedas nos últimos '+days+' dia(s): '+linkFallCount(row,days),'Normalização anterior: '+fullDates.format(row.anterior.fim),'Nova queda: '+fullDates.format(row.inicio),'Intervalo até a nova queda: '+nightDuration(row.intervalo),'Tempo da queda atual: '+nightDuration(Date.now()-row.inicio),''));
- lines.push('Solicitamos a análise da recorrência e uma solução definitiva, com diagnóstico, número do chamado e previsão de atendimento.','','Cada queda corresponde a um início distinto de indisponibilidade desta porta dentro dos últimos '+days+' dia(s), incluindo quedas já encerradas e ainda abertas. Uma queda que permanece aberta conta uma só vez.','O encerramento do alarme indica normalização observada e não comprova reparo técnico. Histórico disponível desde '+(tracking?.inicioColeta?fullDates.format(tracking.inicioColeta):'o início da coleta do portal')+'.','',reportSignature);reportMessage('Reincidência após normalização',lines.join('\n'));
+function recurrenceMessage(rows,days,replacement=false){
+ const now=Date.now(),lines=['Olá, equipe Hughes.','',replacement?'SOLICITAÇÃO DE SUBSTITUIÇÃO — QUEDAS RECORRENTES':'RELATÓRIO GERAL — QUEDAS RECORRENTES','Período: '+fullDates.format(now-Number(days)*86400000)+' a '+fullDates.format(now)+' (horário de Brasília).','Critério: duas ou mais quedas distintas da mesma porta com início no período, incluindo lojas normalizadas.','Lojas afetadas: '+new Set(rows.map(row=>row.host||row.loja)).size,'Portas com quedas recorrentes: '+rows.length,''];
+ if(!rows.length)lines.push('Nenhuma porta com duas ou mais quedas identificada no histórico disponível para este período.','');
+ rows.forEach((row,index)=>lines.push((index+1)+'. Loja: '+storeName(row),'Código: '+row.host,'Marca: '+(brandPalette.get(brand(row))?.label??brand(row)),'Porta: '+portName(row.link),'Quedas nos últimos '+days+' dia(s): '+row.quedas,'Tempo total indisponível no período: '+offlineDuration(row.totalOffline/86400000)+' e '+Math.floor(row.totalOffline/60000)%60+' minutos','Última queda: '+fullDates.format(row.inicio),'Situação atual: '+(row.aberto?'indisponibilidade em aberto.':'sem alarme de indisponibilidade desta porta.'),''));
+ lines.push(replacement?'Solicitamos a avaliação e substituição do link indicado, devido à recorrência das quedas e ao tempo acumulado de indisponibilidade. Pedimos retorno com a alternativa de substituição, número do chamado e previsão de atendimento.':'Solicitamos a análise das portas com maior recorrência e tempo indisponível, para definir as correções definitivas e avaliar a necessidade de substituição.','','Cada queda conta uma única vez pelo início da indisponibilidade. O tempo acumulado é limitado ao período selecionado; períodos simultâneos não são somados duas vezes. A normalização observada não comprova intervenção técnica.','Histórico disponível desde '+(tracking?.inicioColeta?fullDates.format(tracking.inicioColeta):'o início da coleta do portal')+'. A contagem se limita ao histórico disponível.','',reportSignature);reportMessage(replacement?'Solicitar substituição do link':'Relatório geral de quedas recorrentes',lines.join('\n'));
 }
 function renderRecurrences(content){
- document.querySelector('h1').textContent='Reincidência após normalização';document.querySelector('#subtitulo').textContent='Portas com nova queda em aberto após terem normalizado no monitoramento.';
- const box=surface('report-page'),tools=node('div',undefined,'log-filters'),select=node('select'),search=node('input'),report=node('button','Gerar lista','quiet'),summary=node('p',undefined,'subtext'),list=node('div',undefined,'table-scroll');select.setAttribute('aria-label','Intervalo após normalização');for(const [value,text]of [['1','Nova queda em até 24 horas'],['7','Nova queda em até 7 dias'],['30','Nova queda em até 30 dias']]){const option=node('option',text);option.value=value;select.append(option);}select.value=recurrenceDays;search.type='search';search.placeholder='Buscar loja, código ou marca';search.setAttribute('aria-label','Buscar reincidências');search.value=recurrenceQuery;let filtered=[];
- function update(){const term=recurrenceQuery.toLocaleLowerCase('pt-BR');filtered=recurrenceRows(Number(recurrenceDays)).filter(row=>(storeName(row)+' '+row.host+' '+brand(row)).toLocaleLowerCase('pt-BR').includes(term));summary.textContent=new Set(filtered.map(row=>row.host||row.loja)).size+' lojas · '+filtered.length+' portas com reincidência em aberto';const table=node('table'),head=table.createTHead().insertRow();for(const label of ['Loja','Código','Marca','Porta','Quedas no período','Normalização anterior','Nova queda','Intervalo até a nova queda','Tempo da queda atual'])head.append(node('th',label));const body=table.createTBody();for(const row of filtered){const tr=body.insertRow();for(const value of [storeName(row),row.host,brand(row),portName(row.link),linkFallCount(row,recurrenceDays),fullDates.format(row.anterior.fim),fullDates.format(row.inicio),nightDuration(row.intervalo),nightDuration(Date.now()-row.inicio)])tr.insertCell().textContent=value;}if(!filtered.length){const cell=body.insertRow().insertCell();cell.colSpan=9;cell.textContent='Nenhuma reincidência identificada no histórico disponível para este filtro.';}list.replaceChildren(table);}
- select.onchange=()=>{recurrenceDays=select.value;update();};search.oninput=()=>{recurrenceQuery=search.value;update();};report.onclick=()=>recurrenceMessage(filtered,recurrenceDays);tools.append(select,search,report);box.append(tools,summary,node('p','A contagem considera a mesma loja e porta, com nova queda ainda em aberto. Lojas pausadas e retornos durante pausas são excluídos. A identificação depende do histórico coletado pelo portal.','history-notice'),list);content.append(box);update();
+ document.querySelector('h1').textContent='Reincidência após normalização';document.querySelector('#subtitulo').textContent='Todas as lojas com duas ou mais quedas por porta no período, inclusive as que já normalizaram.';
+ const box=surface('report-page'),tools=node('div',undefined,'log-filters'),select=node('select'),search=node('input'),report=node('button','Gerar lista','quiet'),summary=node('p',undefined,'subtext'),list=node('div',undefined,'table-scroll');select.setAttribute('aria-label','Período das quedas recorrentes');for(const [value,text]of [['1','Últimas 24 horas'],['7','Últimos 7 dias'],['30','Últimos 30 dias']]){const option=node('option',text);option.value=value;select.append(option);}select.value=recurrenceDays;search.type='search';search.placeholder='Buscar loja, código ou marca';search.setAttribute('aria-label','Buscar reincidências');search.value=recurrenceQuery;let filtered=[];
+ function update(){const term=recurrenceQuery.toLocaleLowerCase('pt-BR');filtered=recurrenceRows(Number(recurrenceDays)).filter(row=>(storeName(row)+' '+row.host+' '+brand(row)).toLocaleLowerCase('pt-BR').includes(term));summary.textContent=new Set(filtered.map(row=>row.host||row.loja)).size+' lojas · '+filtered.length+' portas com quedas recorrentes';const table=node('table'),head=table.createTHead().insertRow();for(const label of ['Loja','Código','Marca','Porta','Quedas no período','Tempo total indisponível','Última queda','Situação atual','Ações'])head.append(node('th',label));const body=table.createTBody();for(const row of filtered){const tr=body.insertRow();for(const value of [storeName(row),row.host,brand(row),portName(row.link),row.quedas,offlineDuration(row.totalOffline/86400000)+' e '+Math.floor(row.totalOffline/60000)%60+' min',fullDates.format(row.inicio),row.aberto?'Em aberto':'Normalizado'])tr.insertCell().textContent=value;const replace=node('button','Solicitar substituição','quiet');replace.onclick=()=>recurrenceMessage([row],recurrenceDays,true);tr.insertCell().append(replace);}if(!filtered.length){const cell=body.insertRow().insertCell();cell.colSpan=9;cell.textContent='Nenhuma reincidência identificada no histórico disponível para este filtro.';}list.replaceChildren(table);}
+ select.onchange=()=>{recurrenceDays=select.value;update();};search.oninput=()=>{recurrenceQuery=search.value;update();};report.onclick=()=>recurrenceMessage(filtered,recurrenceDays);tools.append(select,search,report);box.append(tools,summary,node('p','Contagem por loja e porta, incluindo quedas encerradas e abertas. Lojas pausadas são excluídas. O histórico disponível pode ser menor que o período selecionado.','history-notice'),list);content.append(box);update();
 }
 function distribution(){
  const box=surface('distribution');box.id='tipos-problemas';const head=node('div',undefined,'panel-heading');head.append(heading('O que está acontecendo'),node('span',incidents.length+' ocorrências','subtext'));box.append(head);
@@ -332,7 +332,7 @@ function distribution(){
  const dualRows=dualLinkRows(),otherIndex=top.findIndex(([name])=>name==='Outros');top.splice(otherIndex<0?top.length:otherIndex,0,[dualProblem,dualRows.length]);
  const list=node('div',undefined,'distribution-list'),maximum=Math.max(1,...top.map(row=>row[1]));
  for(const [name,count]of top){const item=node('a',undefined,'problem-link');
- item.href='./problema.html?v=49&'+(name==='Outros'
+ item.href='./problema.html?v=50&'+(name==='Outros'
   ? 'grupo=outros&excluir='+encodeURIComponent(JSON.stringify(all.slice(0,6).map(row=>row[0])))
   : 'problema='+encodeURIComponent(name));
  item.setAttribute('aria-label',name+' · '+count+(name===dualProblem?' lojas':' ocorrências'));
@@ -345,7 +345,7 @@ function distribution(){
   showProblemList(name,rows);
  };
  line.append(item,generate);list.append(line);}
- const recurrence=recurrenceRows(1),entry=node('div',undefined,'problem-action-row'),link=node('a',undefined,'problem-link'),label=node('div',undefined,'distribution-line');link.href='./?tela=reincidencias&v=49';label.append(node('span','Reincidência após normalização'),node('strong',recurrence.length));link.append(label,node('small','Portas com nova queda em até 24 horas','subtext'));const generate=node('button','Gerar lista','quiet generate-list');generate.setAttribute('aria-label','Gerar lista de reincidências');generate.onclick=()=>recurrenceMessage(recurrence,1);entry.append(link,generate);list.append(entry);
+ const recurrence=recurrenceRows(1),entry=node('div',undefined,'problem-action-row'),link=node('a',undefined,'problem-link'),label=node('div',undefined,'distribution-line');link.href='./?tela=reincidencias&v=50';label.append(node('span','Reincidência após normalização'),node('strong',recurrence.length));link.append(label,node('small','Portas com duas ou mais quedas nas últimas 24 horas','subtext'));const generate=node('button','Gerar lista','quiet generate-list');generate.setAttribute('aria-label','Gerar lista de reincidências');generate.onclick=()=>recurrenceMessage(recurrence,1);entry.append(link,generate);list.append(entry);
  const report=node('button','Gerar relatório total','primary total-report');
  report.type='button';
  report.onclick=()=>{
@@ -363,11 +363,11 @@ function brandPanel(){
  const brands=new Map();for(const row of incidents){const name=brand(row);if(!brands.has(name))brands.set(name,new Set());brands.get(name).add(row.host||row.loja);}
  const grid=node('div',undefined,'brand-grid');grid.style.marginTop='14px';
  for(const [name,stores]of [...brands].sort((a,b)=>b[1].size-a[1].size)){const chip=node('a',undefined,'brand-chip brand-link');
- chip.href='./marca.html?marca='+encodeURIComponent(name)+'&v=49';
+ chip.href='./marca.html?marca='+encodeURIComponent(name)+'&v=50';
  chip.setAttribute('aria-label',name+' · '+stores.size+' lojas afetadas');
  const logoBox=node('span',undefined,'brand-logo-box');
  if(brandLogos.has(name)){
-  const logo=node('img');logo.src='./assets/marcas/'+brandLogos.get(name)+'?v=49';logo.alt=name;
+  const logo=node('img');logo.src='./assets/marcas/'+brandLogos.get(name)+'?v=50';logo.alt=name;
   logo.loading='lazy';logo.className='brand-logo';logoBox.append(logo);
  }else logoBox.append(node('span',name,'brand-text'));
  const caption=node('span',undefined,'brand-caption');caption.append(node('span',name),node('strong',stores.size));
@@ -497,9 +497,9 @@ function logCard(){
  const box=surface('tracking-card');box.append(heading('Acompanhamento de chamados'));const rows=lateCases();box.append(node('p',tracking?rows.length+' problemas com previsão vencida':'Carregando histórico compartilhado…','subtext'));
  const pies=node('div',undefined,'tracking-pies');const buckets=[{label:'Mais de um mês',color:'#ef4444',count:0},{label:'Mais de duas semanas até um mês',color:'#f97316',count:0},{label:'Mais de uma semana até duas',color:'#facc15',count:0},{label:'Mais de um dia até uma semana',color:'#3b82f6',count:0},{label:'Até um dia',color:'#94a3b8',count:0}];
  for(const row of rows){const days=(Date.now()-Math.min(...overdue(row).map(ticket=>ticket.prazo)))/86400000;buckets[days>30?0:days>14?1:days>7?2:days>1?3:4].count++;}
- pies.append(smallPie('Casos por marca',brandSlices(rows)),smallPie('Tempo desde a primeira previsão vencida',buckets.filter(b=>b.count)));box.append(pies);const link=node('a','Abrir log de chamados →','quiet card-link');link.href='./?tela=logs&v=49';box.append(link);return box;
+ pies.append(smallPie('Casos por marca',brandSlices(rows)),smallPie('Tempo desde a primeira previsão vencida',buckets.filter(b=>b.count)));box.append(pies);const link=node('a','Abrir log de chamados →','quiet card-link');link.href='./?tela=logs&v=50';box.append(link);return box;
 }
-function reportCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=relatorio&v=49';link.append(heading('Relatório geral de incidentes'),node('p','Quedas de Link 1 e Link 2 com mais de 24 horas · frequência e dias offline · últimos três meses','subtext'));box.append(link);return box;}
+function reportCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=relatorio&v=50';link.append(heading('Relatório geral de incidentes'),node('p','Quedas de Link 1 e Link 2 com mais de 24 horas · frequência e dias offline · últimos três meses','subtext'));box.append(link);return box;}
 function renderLogs(content){
  document.querySelector('h1').textContent='Log de chamados';document.querySelector('#subtitulo').textContent='Histórico de previsões, analistas e chamados Hughes. Registros anteriores permanecem disponíveis.';
  const box=surface('log-page'),controls=node('div',undefined,'log-filters'),search=node('input'),select=node('select');search.type='search';search.placeholder='Buscar loja, código, chamado ou analista';search.setAttribute('aria-label','Buscar no log');
@@ -538,7 +538,7 @@ function storeIncidentMessage(row,days,replacement=false){
 }
 
 function rankingCard(){
- const card=node('a',undefined,'surface ranking-entry');card.href='./?tela=ranking&v=49';card.append(node('span','↗','monitoring-icon'),heading('Ranking de lojas e links recorrentes'),node('p','Veja quem apresenta mais quedas e mais tempo offline para apoiar pedidos de substituição.','subtext'),node('span','Abrir ranking →','monitoring-open'));return card;
+ const card=node('a',undefined,'surface ranking-entry');card.href='./?tela=ranking&v=50';card.append(node('span','↗','monitoring-icon'),heading('Ranking de lojas e links recorrentes'),node('p','Veja quem apresenta mais quedas e mais tempo offline para apoiar pedidos de substituição.','subtext'),node('span','Abrir ranking →','monitoring-open'));return card;
 }
 // Dados administrativos compartilhados, carregados somente na página de cadastro.
 let cadastro={lojas:[],supervisores:[]},cadastroQuery='';
@@ -582,7 +582,7 @@ function showCadastroExport(){
  for(const [,input]of brandChecks)input.onchange=()=>{const selected=brandChecks.filter(([,box])=>box.checked).map(([key])=>key);exportSelectedBrands=selected.length===names.length?null:new Set(selected);update();};
  form.onsubmit=async event=>{event.preventDefault();const selected=exportColumns.filter(([key])=>exportSelectedColumns.has(key)),stores=rows();if(!selected.length||!stores.length){feedback.textContent='Selecione ao menos uma coluna e uma marca com lojas.';return;}save.disabled=true;feedback.textContent='Preparando planilha…';let url;
   try{const people=new Map(cadastro.supervisores.map(person=>[person.id,person.nome]));const values=stores.map(row=>selected.map(([key])=>key==='loja'?storeName(row):key==='marca'?(brandPalette.get(brand(row))?.label??brand(row)):key==='supervisor'?(people.get(row.supervisorId)??''):(row[key]??'')));
-   const {createWorkbook}=await import('./excel.mjs?v=49');const bytes=createWorkbook(selected.map(([,label])=>presentLinks(label)),values);url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const link=node('a');link.href=url;link.download='Cadastro-Lojas-'+new Date(Date.now()-3*3600000).toISOString().slice(0,10)+'.xlsx';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);url=null;feedback.textContent='Planilha gerada. Os dados cadastrados e as seleções foram mantidos.';
+   const {createWorkbook}=await import('./excel.mjs?v=50');const bytes=createWorkbook(selected.map(([,label])=>presentLinks(label)),values);url=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const link=node('a');link.href=url;link.download='Cadastro-Lojas-'+new Date(Date.now()-3*3600000).toISOString().slice(0,10)+'.xlsx';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);url=null;feedback.textContent='Planilha gerada. Os dados cadastrados e as seleções foram mantidos.';
   }catch(error){if(url)URL.revokeObjectURL(url);feedback.textContent='Não foi possível exportar. Tente novamente.';}finally{update();}
  };
  form.append(node('p','Escolha as colunas e as marcas. A exportação considera todas as lojas dessas marcas, independentemente dos filtros da tabela.','subtext'),columns,brands,count,save,feedback);content.append(form);update();
@@ -681,7 +681,7 @@ function renderIncidentReport(content){
 let nightQuery='';
 function nightDuration(ms){const minutes=Math.floor(ms/60000);return Math.floor(minutes/60)+' h e '+minutes%60+' min';}
 function nightGroups(){const groups=new Map();for(const night of tracking?.noites??[]){const key=night.host||night.loja;if(!groups.has(key))groups.set(key,{...night,nights:[]});groups.get(key).nights.push(night);}for(const control of tracking?.controles??[]){if(!groups.has(control.host))groups.set(control.host,{host:control.host,loja:control.loja,nights:[]});}return [...groups.values()].filter(store=>!isPaused(store)).sort((a,b)=>b.nights.length-a.nights.length||a.loja.localeCompare(b.loja));}
-function nightCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=desligamentos&v=49';link.append(heading('Relatórios desligamentos indevidos'),node('p','FortiGate sem comunicação por mais de 3 horas entre 22h e 10h · ocorrências por loja e marca','subtext'));box.append(link);return box;}
+function nightCard(){const box=surface('incident-report-card'),link=node('a',undefined,'card-link');link.href='./?tela=desligamentos&v=50';link.append(heading('Relatórios desligamentos indevidos'),node('p','FortiGate sem comunicação por mais de 3 horas entre 22h e 10h · ocorrências por loja e marca','subtext'));box.append(link);return box;}
 function nightDate(value){return value.split('-').reverse().join('/');}
 function nightReport(store){
  const rows=[...store.nights].sort((a,b)=>b.data.localeCompare(a.data));
@@ -740,7 +740,7 @@ function monitoringCards(){
   ['Relatório geral de incidentes',reportRows(92).length,'links com quedas superiores a 24 h','relatorio','↗'],
   ['Relatórios desligamentos indevidos',nightGroups().filter(store=>store.nights.length&&!isPaused(store)).length,'lojas com ocorrências noturnas','desligamentos','☾'],
   ['Monitoramento lojas pausadas',paused.length,'lojas com monitoramento pausado','pausadas','Ⅱ'],
- ]){const card=node('a',undefined,'surface monitoring-card');card.href='./?tela='+page+'&v=49';card.append(node('span',icon,'monitoring-icon'),heading(title),node('strong',tracking?total:'—','monitoring-total'),node('p',caption,'subtext'),node('span','Abrir →','monitoring-open'));grid.append(card);}
+ ]){const card=node('a',undefined,'surface monitoring-card');card.href='./?tela='+page+'&v=50';card.append(node('span',icon,'monitoring-icon'),heading(title),node('strong',tracking?total:'—','monitoring-total'),node('p',caption,'subtext'),node('span','Abrir →','monitoring-open'));grid.append(card);}
  return grid;
 }
 function renderPausedStores(content){
@@ -779,7 +779,7 @@ function render(){
  const subtitle=document.querySelector('#subtitulo'),title=document.querySelector('h1');
  const stores=new Set(incidents.map(row=>row.host||row.loja)).size;
  if(['logs','relatorio','desligamentos','pausadas','ranking','reparados','cadastro','reincidencias'].includes(trackingPage)){
-  const back=node('a','‹ Visão geral','back');back.href='./?v=49';content.append(back);
+  const back=node('a','‹ Visão geral','back');back.href='./?v=50';content.append(back);
   if(trackingPage==='reincidencias')renderRecurrences(content);else if(trackingPage==='cadastro')renderCadastro(content);else if(trackingPage==='reparados')renderRepaired(content);else if(trackingPage==='ranking')renderRanking(content);else if(trackingPage==='pausadas')renderPausedStores(content);else if(trackingPage==='logs'){content.append(logCard());renderLogs(content);}else if(trackingPage==='desligamentos')renderNightReport(content);else renderIncidentReport(content);
  }else if(brandPage||problemPage){
   const valid=problemPage
@@ -790,7 +790,7 @@ function render(){
   const rows=dualPage?dualLinkRows():rowsFor().filter(row=>problemPage?matchesProblem(row):brand(row)===requestedBrand);
   subtitle.textContent=new Set(rows.map(row=>row.host||row.loja)).size+' lojas afetadas · '+rows.length+' ocorrências abertas';
   let back=document.querySelector('.back');
-  if(!back){back=node('a','‹ Visão geral','back');back.href=problemPage?'./?v=49#tipos-problemas':'./?v=49#lojas';document.querySelector('.page-heading').before(back);}
+  if(!back){back=node('a','‹ Visão geral','back');back.href=problemPage?'./?v=50#tipos-problemas':'./?v=50#lojas';document.querySelector('.page-heading').before(back);}
   const summary=node('div',undefined,'brand-summary');
   for(const [label,value]of [['Ocorrências abertas',rows.length],['Lojas afetadas',new Set(rows.map(row=>row.host||row.loja)).size],['Caso mais antigo',rows.length?age(rows[0]):'—']]){
     const card=surface('detail-kpi');card.append(node('p',label),node('strong',value));summary.append(card);
@@ -800,7 +800,7 @@ function render(){
  }else if(detail){
   if(!category){title.textContent='Prioridade indisponível';return;}
   title.textContent=category.title;subtitle.textContent='Ocorrências abertas nas lojas desta prioridade';
-  let back=document.querySelector('.back');if(!back){back=node('a','‹ Visão geral','back');back.href='./?from='+period+'&v=49';document.querySelector('.page-heading').before(back);}
+  let back=document.querySelector('.back');if(!back){back=node('a','‹ Visão geral','back');back.href='./?from='+period+'&v=50';document.querySelector('.page-heading').before(back);}
   const titleBox=title.parentElement;if(!titleBox.parentElement.classList.contains('detail-title')){const wrapper=colored(node('div',undefined,'detail-title'),category);titleBox.before(wrapper);wrapper.append(node('span','⚠','detail-icon'),titleBox);}
   const rows=rowsFor(category),top=node('div',undefined,'detail-top'),kpis=node('div',undefined,'detail-kpis');
   const counts=[['Ocorrências agora',rows.length],['Lojas afetadas',new Set(rows.map(row=>row.host||row.loja)).size],['Mais antiga',rows.length?age(rows[0]):'—'],['Mais recente',rows.length?age(rows.at(-1)):'—']];
@@ -835,7 +835,7 @@ if(!login){
   document.querySelector('.nav a[href$="#links"]').onclick=event=>{
     event.preventDefault();
     const content=document.querySelector('#loja-conteudo');content.replaceChildren(heading('Links do monitoramento'));
-    for(const [label,url]of [['Visão geral','./?v=49'],['Lojas e ocorrências','./?v=49#ocorrencias'],['Histórico dos problemas','./?v=49#historico']]){
+    for(const [label,url]of [['Visão geral','./?v=50'],['Lojas e ocorrências','./?v=50#ocorrencias'],['Histórico dos problemas','./?v=50#historico']]){
       const link=node('a',label,'dialog-case');link.href=url;link.style.display='block';content.append(link);
     }
     document.querySelector('#loja-dialog').showModal();
