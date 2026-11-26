@@ -1,4 +1,5 @@
 import { API_URL, REFRESH_SECONDS } from './config.js';
+import {cadastroQueue, lockCadastro, unlockCadastro} from "./cadastro-fila.js";
 const sessionKey='dashhughes-session';
 const reportSignature='Att\nAlexandre Rocha\nAnalista de Suporte de T.I II\nEquipe T.I Lojas';
 const params=new URLSearchParams(location.search);
@@ -44,12 +45,12 @@ const status=document.querySelector('#status');
 const portName=value=>String(value)==='1'?'Porta WAN(Link Principal)':String(value)==='2'?'Porta A(Link Secundário)':String(value);
 const presentLinks=value=>String(value).replace(/\bLink\s+([12])\b/gi,(_,number)=>portName(number));
 const node=(tag,text,cls)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=presentLinks(text);if(cls)el.className=cls;return el;};
-function out(){sessionStorage.removeItem(sessionKey);location.replace('./login.html');}
+function out(){lockCadastro();sessionStorage.removeItem(sessionKey);location.replace('./login.html');}
 async function api(path,options={}){
  const response=await fetch(API_URL+path,{...options,cache:'no-store',signal:options.signal??AbortSignal.timeout(40000)});
  if(response.status===401&&!document.querySelector('#login')){out();throw new Error('Sessão encerrada.');}
  const data=await response.json();
- if(!response.ok)throw new Error(data.error??'Não foi possível atualizar os dados.');
+ if(!response.ok){const error=new Error(data.error??'Não foi possível atualizar os dados.');error.status=response.status;throw error;}
  return data;
 }
 const login=document.querySelector('#login');
@@ -58,6 +59,7 @@ if(login){
   event.preventDefault();const button=login.querySelector('button');button.disabled=true;
   try{
    const data=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:login.elements.user.value,password:login.elements.password.value})});
+   await unlockCadastro(login.elements.user.value,login.elements.password.value);
    sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=50');
   }catch(error){status.textContent=error.message;}finally{button.disabled=false;login.elements.password.value='';}
  });
@@ -542,6 +544,31 @@ function rankingCard(){
 }
 // Dados administrativos compartilhados, carregados somente na página de cadastro.
 let cadastro={lojas:[],supervisores:[]},cadastroQuery='';
+let cadastroLocal=null;
+const sendCadastro=(kind,body)=>api('/api/cadastro/'+kind,{...authOptions(),method:'POST',headers:{...authOptions().headers,'Content-Type':'application/json'},body:JSON.stringify(body)});
+async function saveCadastro(kind,body){
+ const queue=cadastroQueue();
+ if(!queue)return {saved:await sendCadastro(kind,body)};
+ cadastroLocal=await queue.enqueue(kind,body);
+ return {pending:true};
+}
+function renderCadastroFila(){
+ const box=node('section',undefined,'subtext'),edits=cadastroLocal?.edits??[];
+ if(!edits.length)return box;
+ box.append(node('p',edits.length+' alteração(ões) armazenada(s) neste dispositivo.'));
+ for(const edit of edits){
+  const details=node('details'), label=edit.body.host??edit.body.nome;
+  const state={pending:'Aguardando sincronização',conflict:'Conflito de versão',rejected:'Rejeitada pelo servidor'}[edit.status];
+  details.append(node('summary',label+' · '+state),node('pre',JSON.stringify(edit.body,null,2)));
+  if(edit.status!=='pending'){
+   const discard=node('button','Remover rascunho local','quiet');discard.type='button';
+   discard.onclick=async()=>{if(!confirm('Remover somente este rascunho local?'))return;try{cadastroLocal=await cadastroQueue().discard(edit.id);render();}catch(error){status.textContent=error.message;}};
+   details.append(discard);
+  }
+  box.append(details);
+ }
+ return box;
+}
 const cadastroFilters={marca:'',loja:'',supervisor:'',gateway:''};
 const normalizeCadastro=value=>String(value??'').normalize('NFD').replace(/\p{M}/gu,'').trim().toLocaleLowerCase('pt-BR');
 function field(form,label,value,max=160){const wrap=node('label',label),input=node('input');input.value=value??'';input.maxLength=max;wrap.append(input);form.append(wrap);return input;}
@@ -552,14 +579,14 @@ function editStoreCadastro(row){
  const label=node('label','Supervisora / Supervisor'),select=node('select'),empty=node('option','Não informado');empty.value='';select.append(empty);
  for(const person of [...cadastro.supervisores].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))){const option=node('option',person.nome);option.value=person.id;select.append(option);}select.value=row.supervisorId??'';label.append(select);form.append(label);
  const feedback=node('p',undefined,'status-message');feedback.setAttribute('role','status');const save=node('button','Salvar cadastro','primary-action');save.type='submit';form.append(save,feedback);
- form.onsubmit=async event=>{event.preventDefault();save.disabled=true;feedback.textContent='Salvando…';try{const body={host:row.host,versao:row.versao,supervisorId:select.value};for(const [key,input]of Object.entries(inputs))body[key]=input.value.trim();const saved=await api('/api/cadastro/loja',{...authOptions(),method:'POST',headers:{...authOptions().headers,'Content-Type':'application/json'},body:JSON.stringify(body)});cadastro.lojas=cadastro.lojas.map(item=>item.host===saved.host?saved:item);document.querySelector('#loja-dialog').close();render();status.textContent='Cadastro da loja salvo.';}catch(error){feedback.textContent=error.message;}finally{save.disabled=false;}};
+ form.onsubmit=async event=>{event.preventDefault();save.disabled=true;feedback.textContent='Salvando…';try{const body={host:row.host,versao:row.versao,supervisorId:select.value};for(const [key,input]of Object.entries(inputs))body[key]=input.value.trim();const {saved,pending}=await saveCadastro('loja',body);if(pending){document.querySelector('#loja-dialog').close();render();status.textContent='Salvo neste dispositivo · aguardando sincronização.';return;}cadastro.lojas=cadastro.lojas.map(item=>item.host===saved.host?saved:item);document.querySelector('#loja-dialog').close();render();status.textContent='Cadastro da loja salvo.';}catch(error){feedback.textContent=error.message;}finally{save.disabled=false;}};
  content.append(form);document.querySelector('#loja-dialog').showModal();
 }
 function supervisorDialog(person=null){
  const content=document.querySelector('#loja-conteudo');content.replaceChildren(heading('Cadastro de supervisoras e supervisores'));
  const form=node('form',undefined,'forecast-form'),name=field(form,'Nome da supervisora ou supervisor',person?.nome);name.required=true;
  const save=node('button',person?'Salvar alterações':'Cadastrar responsável','primary-action');save.type='submit';const feedback=node('p',undefined,'status-message');feedback.setAttribute('role','status');form.append(save,feedback);
- form.onsubmit=async event=>{event.preventDefault();save.disabled=true;try{const saved=await api('/api/cadastro/supervisor',{...authOptions(),method:'POST',headers:{...authOptions().headers,'Content-Type':'application/json'},body:JSON.stringify({id:person?.id??crypto.randomUUID(),nome:name.value.trim(),versao:person?.versao})});cadastro.supervisores=[...cadastro.supervisores.filter(item=>item.id!==saved.id),saved];render();supervisorDialog();document.querySelector('#loja-conteudo [role="status"]').textContent='Responsável salvo.';}catch(error){feedback.textContent=error.message;}finally{save.disabled=false;}};
+ form.onsubmit=async event=>{event.preventDefault();save.disabled=true;try{const {saved,pending}=await saveCadastro('supervisor',{id:person?.id??crypto.randomUUID(),nome:name.value.trim(),versao:person?.versao});if(pending){document.querySelector('#loja-dialog').close();render();status.textContent='Salvo neste dispositivo · aguardando sincronização.';return;}cadastro.supervisores=[...cadastro.supervisores.filter(item=>item.id!==saved.id),saved];render();supervisorDialog();document.querySelector('#loja-conteudo [role="status"]').textContent='Responsável salvo.';}catch(error){feedback.textContent=error.message;}finally{save.disabled=false;}};
  content.append(form,heading('Responsáveis cadastrados',3));
  for(const item of [...cadastro.supervisores].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))){const line=node('div',undefined,'ticket-entry'),edit=node('button','Editar','quiet');edit.type='button';edit.onclick=()=>supervisorDialog(item);line.append(node('strong',item.nome),edit);content.append(line);}
  if(!cadastro.supervisores.length)content.append(node('p','Nenhum responsável cadastrado.','empty'));
@@ -611,7 +638,7 @@ function renderCadastro(content){
    for(const n of [1,2]){const cell=tr.insertCell();cell.append(node('div',row['link'+n+'Operadora']||'Operadora não informada'),node('small',row['link'+n+'Velocidade']||'Velocidade não informada'));}
    tr.insertCell().textContent=row.gerente||'Não informado';const supervisor=tr.insertCell(),choose=node('button',people.get(row.supervisorId)||'Selecionar responsável','quiet');choose.onclick=()=>editStoreCadastro(row);supervisor.append(choose);const edit=node('button','Editar cadastro','quiet');edit.onclick=()=>editStoreCadastro(row);tr.insertCell().append(edit);
   }if(!rows.length){const cell=body.insertRow().insertCell();cell.colSpan=8;cell.textContent='Nenhuma loja encontrada.';}list.replaceChildren(table);
- }search.oninput=()=>{cadastroQuery=search.value;update();};box.append(tools,filters,summary,list);content.append(box);update();
+ }search.oninput=()=>{cadastroQuery=search.value;update();};box.append(renderCadastroFila(),tools,filters,summary,list);content.append(box);update();
 }
 
 // Lista apenas encerramentos observados, sem afirmar reparo técnico confirmado.
@@ -818,7 +845,29 @@ async function refresh(){
  clearTimeout(timer);activeRequest?.abort();const controller=new AbortController();activeRequest=controller;
  try{
   const options={headers:{Authorization:'Bearer '+sessionStorage.getItem(sessionKey)},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(45000)])};
-  if(trackingPage==='cadastro'){cadastro=await api('/api/cadastro',options);if(controller.signal.aborted)return;updated=Date.now();status.textContent='';render();return;}
+  if(trackingPage==='cadastro'){
+   const queue=cadastroQueue();
+   if(queue)cadastroLocal=await queue.read();
+   let fresh;
+   try{fresh=await api('/api/cadastro',options);}
+   catch(error){
+    if(controller.signal.aborted)return;
+    if(!sessionStorage.getItem(sessionKey)||!cadastroLocal?.snapshot)throw error;
+    cadastro=cadastroLocal.snapshot;updated=cadastroLocal.updated;render();
+    status.textContent='Exibindo a cópia local. Alterações ficam na fila até o cadastro voltar.';
+    return;
+   }
+   if(controller.signal.aborted)return;
+   if(queue){
+    const before=cadastroLocal.edits.length;
+    cadastroLocal=await queue.sync(fresh,sendCadastro);
+    if(controller.signal.aborted||!sessionStorage.getItem(sessionKey))return;
+    if(cadastroLocal.edits.length<before)fresh=await api('/api/cadastro',options);
+    cadastroLocal=await queue.remember(fresh);
+   }
+   if(controller.signal.aborted)return;
+   cadastro=fresh;updated=Date.now();status.textContent='';render();return;
+  }
   const [summary,problems]=await Promise.all([api('/api/resumo?from='+period+'&to=now',options),api('/api/problemas',options)]);
   if(controller.signal.aborted)return;panels=summary.paineis;allIncidents=problems.ocorrencias;tracking=problems.acompanhamento??tracking;incidents=visibleIncidents();updated=Date.parse(summary.atualizadoEm);status.textContent=tracking?.aviso??(tracking?.ultimaColeta&&Date.now()-tracking.ultimaColeta>900000?'O histórico está sem atualização há mais de 15 minutos. Confira a última coleta antes de usar o relatório.':'');render();
  }catch(error){if(!controller.signal.aborted)status.textContent=error.message==='Failed to fetch'?'Não foi possível atualizar. Exibindo os últimos dados.':error.message;}
