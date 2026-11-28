@@ -1,6 +1,10 @@
-import { API_URL, REFRESH_SECONDS } from './config.js';
+import { API_URL, REFRESH_SECONDS } from './config.js?v=63';
+import { renderImpressoras, resumoImpressoras } from './impressoras-ui.js?v=62';
+import { origemDaResposta, indicadorDados } from './status-dados.js';
 import {cadastroQueue, lockCadastro, unlockCadastro} from "./cadastro-fila.js";
-const sessionKey='dashhughes-session';
+const sessionKey='dashhughes-session', perfilKey='dashsoma-perfil';
+let fonteDados={modo:'conectando'};
+const podeEditar=()=>sessionStorage.getItem(perfilKey)==='master'&&!['backup','sem-data','sem-conexao'].includes(fonteDados.modo);
 const reportSignature='Att\nAlexandre Rocha\nAnalista de Suporte de T.I II\nEquipe T.I Lojas';
 const params=new URLSearchParams(location.search);
 const categories=[
@@ -45,9 +49,12 @@ const status=document.querySelector('#status');
 const portName=value=>String(value)==='1'?'Porta WAN(Link Principal)':String(value)==='2'?'Porta A(Link Secundário)':String(value);
 const presentLinks=value=>String(value).replace(/\bLink\s+([12])\b/gi,(_,number)=>portName(number));
 const node=(tag,text,cls)=>{const el=document.createElement(tag);if(text!==undefined)el.textContent=presentLinks(text);if(cls)el.className=cls;return el;};
-function out(){lockCadastro();sessionStorage.removeItem(sessionKey);location.replace('./login.html');}
+function out(){lockCadastro();sessionStorage.removeItem(sessionKey);sessionStorage.removeItem(perfilKey);location.replace('./login.html');}
 async function api(path,options={}){
- const response=await fetch(API_URL+path,{...options,cache:'no-store',signal:options.signal??AbortSignal.timeout(40000)});
+ if(options.method==='POST'&&path!=='/api/login'&&!podeEditar())throw new Error('Este perfil permite somente visualização.');
+ const {observarFonte,...fetchOptions}=options;
+ const response=await fetch(API_URL+path,{...fetchOptions,cache:'no-store',signal:options.signal??AbortSignal.timeout(40000)});
+ if(response.ok)observarFonte?.(origemDaResposta(response.headers));
  if(response.status===401&&!document.querySelector('#login')){out();throw new Error('Sessão encerrada.');}
  const data=await response.json();
  if(!response.ok){const error=new Error(data.error??'Não foi possível atualizar os dados.');error.status=response.status;throw error;}
@@ -59,7 +66,9 @@ if(login){
   event.preventDefault();const button=login.querySelector('button');button.disabled=true;
   try{
    const data=await api('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:login.elements.user.value,password:login.elements.password.value})});
-   await unlockCadastro(login.elements.user.value,login.elements.password.value);
+   if(!['master','viewer'].includes(data.perfil))throw new Error('O serviço não informou um perfil reconhecido.');
+   if(data.perfil==='master')await unlockCadastro(login.elements.user.value,login.elements.password.value);
+   sessionStorage.setItem(perfilKey,data.perfil);
    sessionStorage.setItem(sessionKey,data.token);location.replace('./?v=51');
   }catch(error){status.textContent=error.message;}finally{button.disabled=false;login.elements.password.value='';}
  });
@@ -195,6 +204,52 @@ function drawBrandPie(canvas,slices,unit='ocorrência',plural='ocorrências'){
   },
  });
  charts.push(chart);
+}
+
+let resumoDoInventario=null;
+let erroDoInventario=false;
+
+function cartoesImpressoras(){
+ const grade=node('div',undefined,'stats-grid printer-stats-grid');
+ const resumo=resumoDoInventario;
+ const tintas=resumo?.tintas.reduce((total,valor)=>total+valor,0)??0;
+ const modelos=[
+  ['Nível Tintas Impressoras',resumo?.tintas,tintas,
+   [['Abaixo de 10%','#ff575e'],['De 10% a 50%','#f4cd4d'],['Acima de 50%','#6da9ff']],
+   resumo ? (resumo.total-tintas)+' sem leitura de tinta' : ''],
+  ['Inventário de Impressoras',resumo?.inventario,resumo?.total??0,
+   [['IP na rede do gateway','#35c779'],['IP fora da rede ou sem gateway correspondente','#f4cd4d'],['Sem IP','#ff575e']],
+   resumo ? 'Total de impressoras' : ''],
+ ];
+ for(const [titulo,contagens,total,categorias,subtitulo] of modelos){
+  const card=colored(node('a',undefined,'stat-card'),{color:'#6da9ff'});
+  card.href='./?tela=impressoras&v=57';
+  card.setAttribute('aria-label',titulo+' · Abrir Cadastro de Impressoras');
+  const label=node('div',undefined,'stat-label');label.append(node('span',undefined,'dot'),node('span',titulo));
+  const metric=node('div',undefined,'stat-value'+(!total?' zero':''));
+  metric.append(node('strong',resumo?format.format(total):'—'));
+  const grafico=node('div',undefined,'brand-pie-wrap');
+  const legenda=node('ul',undefined,'brand-pie-legend');
+  legenda.setAttribute('aria-label','Legenda de '+titulo);
+  const fatias=categorias.map(([label,color],i)=>({label,color,count:contagens?.[i]}));
+  if(total&&window.Chart){
+   const canvas=node('canvas');
+   canvas.setAttribute('role','img');
+   canvas.setAttribute('aria-label',titulo+': '+fatias.map(item=>item.label+' '+item.count).join(', '));
+   grafico.append(canvas);
+   queueMicrotask(()=>drawBrandPie(canvas,fatias,'impressora','impressoras'));
+  }else grafico.append(node('span',resumo?'Sem dados':erroDoInventario?'Indisponível':'Carregando…','brand-pie-empty'));
+  for(const item of fatias){
+   const li=node('li'),cor=node('span',undefined,'brand-pie-swatch');
+   cor.style.backgroundColor=item.color;
+   li.append(cor,node('span',item.label+' · '+(item.count??'—')));
+   legenda.append(li);
+  }
+  metric.append(grafico);
+  card.append(label,metric,node('p',subtitulo,'stat-caption'),legenda);
+  grade.append(card);
+ }
+ return grade;
 }
 
 function statCards(){
@@ -433,11 +488,19 @@ function detailStores(){
 // Chamados ficam no serviço compartilhado; nenhum dado operacional é salvo no repositório.
 let allIncidents=[],tracking=null,reportPeriod='30',reportQuery='',logFilter='all',logQuery='';
 const trackingPage=params.get('tela');
+let impressoras={linhas:[]};
+const filtrosImpressoras={filtros:{},pendentes:false};
+async function atualizarImpressoras() {
+ await api('/api/impressoras/atualizar',{...authOptions(),method:'POST'});
+ await refresh();
+}
+const paginasHistorico=new Set(['logs','relatorio','desligamentos','pausadas','ranking','reparados','reincidencias']);
 const authOptions=()=>({headers:{Authorization:'Bearer '+sessionStorage.getItem(sessionKey)}});
 function storeControl(row){return tracking?.controles?.find(control=>control.host===(row.host||row.loja));}
 function isPaused(row){return !!storeControl(row)?.pausado;}
-function monitoringButtons(row){const wrap=node('div',undefined,'tracking-actions'),pause=node('button',isPaused(row)?'Monitoramento Pausado':'Pausar monitoramento','quiet');pause.disabled=isPaused(row);pause.onclick=()=>confirmStoreControl(row,'pausar');wrap.append(pause);if(isPaused(row)){const resume=node('button','Reativar','quiet');if(row.host==='SOM078F1'){resume.disabled=true;resume.title='Loja Duplicada: reativação bloqueada';}resume.onclick=()=>confirmStoreControl(row,'reativar');wrap.append(resume);}return wrap;}
+function monitoringButtons(row){const wrap=node('div',undefined,'tracking-actions');if(!podeEditar())return wrap;const pause=node('button',isPaused(row)?'Monitoramento Pausado':'Pausar monitoramento','quiet');pause.disabled=isPaused(row);pause.onclick=()=>confirmStoreControl(row,'pausar');wrap.append(pause);if(isPaused(row)){const resume=node('button','Reativar','quiet');if(row.host==='SOM078F1'){resume.disabled=true;resume.title='Loja Duplicada: reativação bloqueada';}resume.onclick=()=>confirmStoreControl(row,'reativar');wrap.append(resume);}return wrap;}
 function confirmStoreControl(row,acao,reason){
+ if(!podeEditar())return;
  const title=reason==='falso_positivo'?'Falso Positivo':acao==='zerar'?'Excluir log da loja':acao==='pausar'?'Pausar monitoramento':'Reativar monitoramento';const content=modal(title);content.append(node('p',storeName(row)+' · '+row.host),node('p',acao==='zerar'?'Excluir todo o histórico noturno desta loja e retornar o contador a zero? Esta exclusão não pode ser desfeita. Novos registros só considerarão o período após esta ação.':acao==='pausar'?'A loja será retirada dos incidentes ativos e da coleta de desligamentos do portal até ser reativada. Os históricos existentes serão preservados.':'O acompanhamento da loja voltará a partir de agora. O período de pausa não será contabilizado como nova ocorrência noturna.'));
  let mode,date,form;
  if(acao==='pausar'){
@@ -462,6 +525,7 @@ function warning(row){
 }
 function modal(title){const dialog=document.querySelector('#loja-dialog'),content=document.querySelector('#loja-conteudo');content.replaceChildren(heading(title));if(!dialog.open)dialog.showModal();return content;}
 function showForecast(row){
+ if(!podeEditar())return;
  const content=modal('Previsão para solução');content.append(node('p',storeName(row)+' · '+row.host),node('p',simple(row.problema)));
  const form=node('form',undefined,'forecast-form'),feedback=node('p',undefined,'status-message');feedback.setAttribute('role','status');
  const controls={};
@@ -489,7 +553,7 @@ function logEntries(content,events){
  }
 }
 function showStoreLog(row){const content=modal('Log Loja · '+storeName(row));content.append(node('p',row.host));const events=tracking?.eventos.filter(event=>(event.host||event.loja)===(row.host||row.loja))??[];logEntries(content,events);}
-function trackingActions(row){const actions=node('div',undefined,'tracking-actions'),forecast=node('button','Previsão para solução','quiet'),log=node('button','Log Loja','quiet');forecast.disabled=!tracking||!row.id;forecast.onclick=()=>showForecast(row);log.onclick=()=>showStoreLog(row);actions.append(forecast,log,...monitoringButtons(row).children);if(['SOM078F1','SOM341F1'].includes(row.host)){const check=node('button','Conferir cadastro','quiet');check.onclick=()=>showJKCheck(row.host==='SOM341F1'?'campinas':'jk');actions.append(check);}if(simple(row.problema)==='Firewall não responde ao monitoramento'){const falsePositive=node('button','Falso Positivo','quiet');falsePositive.onclick=()=>confirmStoreControl(row,'pausar','falso_positivo');actions.append(falsePositive);}return actions;}
+function trackingActions(row){const actions=node('div',undefined,'tracking-actions'),forecast=node('button','Previsão para solução','quiet'),log=node('button','Log Loja','quiet');forecast.disabled=!tracking||!row.id;forecast.onclick=()=>showForecast(row);log.onclick=()=>showStoreLog(row);if(podeEditar())actions.append(forecast);actions.append(log,...monitoringButtons(row).children);if(['SOM078F1','SOM341F1'].includes(row.host)){const check=node('button','Conferir cadastro','quiet');check.onclick=()=>showJKCheck(row.host==='SOM341F1'?'campinas':'jk');actions.append(check);}if(podeEditar()&&simple(row.problema)==='Firewall não responde ao monitoramento'){const falsePositive=node('button','Falso Positivo','quiet');falsePositive.onclick=()=>confirmStoreControl(row,'pausar','falso_positivo');actions.append(falsePositive);}return actions;}
 function smallPie(title,slices,unit='ocorrência',plural='ocorrências'){
  const box=node('div',undefined,'tracking-pie');box.append(node('h3',title));
  if(slices.length){const wrap=node('div',undefined,'brand-pie-wrap'),canvas=node('canvas');canvas.setAttribute('role','img');canvas.setAttribute('aria-label',title+': '+slices.map(s=>s.label+' '+s.count).join(', '));wrap.append(canvas);box.append(wrap);queueMicrotask(()=>drawBrandPie(canvas,slices,unit,plural));const legend=node('ul',undefined,'compact-legend');for(const slice of slices){const li=node('li'),dot=node('span',undefined,'legend-dot');dot.style.backgroundColor=slice.color;li.append(dot,node('span',slice.label+' · '+slice.count));legend.append(li);}box.append(legend);}else box.append(node('p','Nenhum caso.','empty'));return box;
@@ -507,7 +571,7 @@ function renderLogs(content){
  const box=surface('log-page'),controls=node('div',undefined,'log-filters'),search=node('input'),select=node('select');search.type='search';search.placeholder='Buscar loja, código, chamado ou analista';search.setAttribute('aria-label','Buscar no log');
  for(const [value,label]of [['all','Todos os registros'],['late','Previsões vencidas'],['open','Problemas abertos'],['closed','Problemas encerrados']]){const option=node('option',label);option.value=value;select.append(option);}select.setAttribute('aria-label','Situação do chamado');select.value=logFilter;search.value=logQuery;
  const list=node('div');function update(){list.replaceChildren();const term=search.value.toLowerCase();const events=(tracking?.eventos??[]).filter(event=>ticketsFor(event).length&&(select.value==='all'||select.value==='late'&&overdue(event).length||select.value==='open'&&!event.fim||select.value==='closed'&&event.fim)&&[storeName(event),event.host,...ticketsFor(event).flatMap(ticket=>[ticket.numero,ticket.analista])].some(value=>value?.toLowerCase().includes(term)));
-  for(const event of events){const part=node('section',undefined,'log-case'),name=heading(storeName(event));name.append(warning(event));part.append(name,node('p',event.host+' · '+brand(event)));logEntries(part,[event]);list.append(part);}if(!events.length)list.append(node('p','Nenhum registro para este filtro.','empty'));
+  for(const event of events){const part=node('section',undefined,'log-case'),name=heading(storeName(event));name.append(warning(event));part.append(name,node('p',event.host+' · '+brand(event)));logEntries(part,[event]);list.append(part);}if(!events.length)list.append(node('p',tracking?.chamados?.length?'Nenhum chamado para este filtro.':'Nenhum chamado registrado no histórico carregado. Os incidentes continuam disponíveis nos relatórios.','empty'));
  }search.oninput=()=>{logQuery=search.value;update();};select.onchange=()=>{logFilter=select.value;update();};controls.append(search,select);box.append(controls,list);content.append(box);update();
 }
 // Os intervalos de queda são unidos por loja/link para não contar o mesmo tempo duas vezes.
@@ -547,12 +611,14 @@ let cadastro={lojas:[],supervisores:[]},cadastroQuery='';
 let cadastroLocal=null;
 const sendCadastro=(kind,body)=>api('/api/cadastro/'+kind,{...authOptions(),method:'POST',headers:{...authOptions().headers,'Content-Type':'application/json'},body:JSON.stringify(body)});
 async function saveCadastro(kind,body){
+ if(!podeEditar())throw new Error('Este perfil permite somente visualização.');
  const queue=cadastroQueue();
  if(!queue)return {saved:await sendCadastro(kind,body)};
  cadastroLocal=await queue.enqueue(kind,body);
  return {pending:true};
 }
 function renderCadastroFila(){
+ if(!podeEditar())return node('section');
  const box=node('section',undefined,'subtext'),edits=cadastroLocal?.edits??[];
  if(!edits.length)return box;
  box.append(node('p',edits.length+' alteração(ões) armazenada(s) neste dispositivo.'));
@@ -573,6 +639,7 @@ const cadastroFilters={marca:'',loja:'',supervisor:'',gateway:''};
 const normalizeCadastro=value=>String(value??'').normalize('NFD').replace(/\p{M}/gu,'').trim().toLocaleLowerCase('pt-BR');
 function field(form,label,value,max=160){const wrap=node('label',label),input=node('input');input.value=value??'';input.maxLength=max;wrap.append(input);form.append(wrap);return input;}
 function editStoreCadastro(row){
+ if(!podeEditar())return;
  const content=document.querySelector('#loja-conteudo');content.replaceChildren(heading('Editar cadastro da loja'),node('p',storeName(row)+' · '+row.host,'subtext'));
  const form=node('form',undefined,'forecast-form'),inputs={};
  for(const [key,label,max]of [['gateway','Gateway (ex.: 10.51.1.1)',15],['link1Operadora','Link 1 · Operadora',120],['link1Velocidade','Link 1 · Velocidade (ex.: 100 Mbps)',80],['link2Operadora','Link 2 · Operadora',120],['link2Velocidade','Link 2 · Velocidade (ex.: 100 Mbps)',80],['gerente','Nome da gerente / do gerente',160]])inputs[key]=field(form,label,row[key],max);
@@ -583,6 +650,7 @@ function editStoreCadastro(row){
  content.append(form);document.querySelector('#loja-dialog').showModal();
 }
 function supervisorDialog(person=null){
+ if(!podeEditar())return;
  const content=document.querySelector('#loja-conteudo');content.replaceChildren(heading('Cadastro de supervisoras e supervisores'));
  const form=node('form',undefined,'forecast-form'),name=field(form,'Nome da supervisora ou supervisor',person?.nome);name.required=true;
  const save=node('button',person?'Salvar alterações':'Cadastrar responsável','primary-action');save.type='submit';const feedback=node('p',undefined,'status-message');feedback.setAttribute('role','status');form.append(save,feedback);
@@ -617,7 +685,7 @@ function showCadastroExport(){
 function renderCadastro(content){
  document.querySelector('h1').textContent='Cadastro Lojas';document.querySelector('#subtitulo').textContent='Lojas da fonte de monitoramento, incluindo unidades sem incidentes e com monitoramento pausado.';
  const box=surface('report-page'),tools=node('div',undefined,'log-filters'),search=node('input'),supervisors=node('button','Cadastrar supervisoras e supervisores','quiet'),summary=node('p',undefined,'subtext'),list=node('div',undefined,'table-scroll');
- search.type='search';search.placeholder='Buscar loja, código, marca, gateway ou responsável';search.setAttribute('aria-label','Buscar no cadastro de lojas');search.value=cadastroQuery;supervisors.onclick=()=>supervisorDialog();const exportButton=node('button','Exportar planilha','quiet');exportButton.onclick=showCadastroExport;tools.append(search,supervisors,exportButton);
+ search.type='search';search.placeholder='Buscar loja, código, marca, gateway ou responsável';search.setAttribute('aria-label','Buscar no cadastro de lojas');search.value=cadastroQuery;supervisors.onclick=()=>supervisorDialog();const exportButton=node('button','Exportar planilha','quiet');exportButton.onclick=showCadastroExport;tools.append(search);if(podeEditar())tools.append(supervisors);tools.append(exportButton);
  const filters=node('div',undefined,'log-filters cadastro-filters');
  for(const [key,label] of [['marca','Marca'],['loja','Loja'],['supervisor','Supervisora / Supervisor'],['gateway','Gateway']]){
   const input=field(filters,label,cadastroFilters[key]);
@@ -633,11 +701,11 @@ function renderCadastro(content){
    return normalizeCadastro([...Object.values(values),row.gerente].join(' ')).includes(term)
     && active.every(([key,value])=>normalizeCadastro(values[key]).includes(value));
   }).sort((a,b)=>storeName(a).localeCompare(storeName(b),'pt-BR'));
-  summary.textContent=rows.length+' de '+cadastro.lojas.length+' lojas';const table=node('table'),head=table.createTHead().insertRow();for(const label of ['Loja / Código','Marca','Gateway','Link 1','Link 2','Gerente','Supervisora / Supervisor','Ações'])head.append(node('th',label));const body=table.createTBody();
+  summary.textContent=rows.length+' de '+cadastro.lojas.length+' lojas';const table=node('table'),head=table.createTHead().insertRow();for(const label of ['Loja / Código','Marca','Gateway','Link 1','Link 2','Gerente','Supervisora / Supervisor',...(podeEditar()?['Ações']:[])])head.append(node('th',label));const body=table.createTBody();
   for(const row of rows){const tr=body.insertRow(),name=tr.insertCell();name.append(node('strong',storeName(row)),node('small',row.host+(row.host==='SOM078F1'?' · Loja Duplicada':'')));tr.insertCell().textContent=brand(row);tr.insertCell().textContent=row.gateway||'Não informado';
    for(const n of [1,2]){const cell=tr.insertCell();cell.append(node('div',[row['link'+n+'Operadora'],row['link'+n+'Velocidade']].filter(Boolean).join(' ')||'Não informado'));}
-   tr.insertCell().textContent=row.gerente||'Não informado';const supervisor=tr.insertCell(),choose=node('button',people.get(row.supervisorId)||'Selecionar responsável','quiet');choose.onclick=()=>editStoreCadastro(row);supervisor.append(choose);const edit=node('button','Editar cadastro','quiet');edit.onclick=()=>editStoreCadastro(row);tr.insertCell().append(edit);
-  }if(!rows.length){const cell=body.insertRow().insertCell();cell.colSpan=8;cell.textContent='Nenhuma loja encontrada.';}list.replaceChildren(table);
+   tr.insertCell().textContent=row.gerente||'Não informado';const supervisor=tr.insertCell();if(podeEditar()){const choose=node('button',people.get(row.supervisorId)||'Selecionar responsável','quiet');choose.onclick=()=>editStoreCadastro(row);supervisor.append(choose);const edit=node('button','Editar cadastro','quiet');edit.onclick=()=>editStoreCadastro(row);tr.insertCell().append(edit);}else supervisor.textContent=people.get(row.supervisorId)||'Não informado';
+  }if(!rows.length){const cell=body.insertRow().insertCell();cell.colSpan=podeEditar()?8:7;cell.textContent='Nenhuma loja encontrada.';}list.replaceChildren(table);
  }search.oninput=()=>{cadastroQuery=search.value;update();};box.append(renderCadastroFila(),tools,filters,summary,list);content.append(box);update();
 }
 
@@ -746,7 +814,7 @@ function showBrandNightReport(){
 function showNightLog(store){
  const content=modal('Log da loja · '+storeName(store));content.append(node('p','Código: '+store.host),node('p',store.nights.length+' noites identificadas desde 21/11/2026.','subtext'));
  for(const night of [...store.nights].sort((a,b)=>b.data.localeCompare(a.data))){const item=node('article',undefined,'ticket-entry');item.append(node('strong','Noite identificada pela manhã de '+nightDate(night.data)),node('p','Início no período noturno: '+fullDates.format(night.inicio)),node('p','Último horário registrado nessa noite: '+fullDates.format(night.fim)),node('p','Tempo sem comunicação: '+nightDuration(night.duracao)));content.append(item);}
- const remove=node('button','Excluir log da loja','quiet');remove.disabled=!store.nights.length;remove.onclick=()=>confirmStoreControl(store,'zerar');content.append(remove);content.append(node('p','Cada registro representa uma noite com mais de três horas contínuas de indisponibilidade. Os horários se limitam à janela das 22h às 10h, no horário de Brasília.','subtext'));
+ const remove=node('button','Excluir log da loja','quiet');remove.disabled=!store.nights.length;remove.onclick=()=>confirmStoreControl(store,'zerar');if(podeEditar())content.append(remove);content.append(node('p','Cada registro representa uma noite com mais de três horas contínuas de indisponibilidade. Os horários se limitam à janela das 22h às 10h, no horário de Brasília.','subtext'));
 }
 function renderNightReport(content){
  document.querySelector('h1').textContent='Relatórios desligamentos indevidos';
@@ -805,9 +873,16 @@ function render(){
  const content=document.querySelector('#conteudo');content.replaceChildren();
  const subtitle=document.querySelector('#subtitulo'),title=document.querySelector('h1');
  const stores=new Set(incidents.map(row=>row.host||row.loja)).size;
- if(['logs','relatorio','desligamentos','pausadas','ranking','reparados','cadastro','reincidencias'].includes(trackingPage)){
+ if(['logs','relatorio','desligamentos','pausadas','ranking','reparados','cadastro','reincidencias','impressoras'].includes(trackingPage)){
   const back=node('a','‹ Visão geral','back');back.href='./?v=51';content.append(back);
-  if(trackingPage==='reincidencias')renderRecurrences(content);else if(trackingPage==='cadastro')renderCadastro(content);else if(trackingPage==='reparados')renderRepaired(content);else if(trackingPage==='ranking')renderRanking(content);else if(trackingPage==='pausadas')renderPausedStores(content);else if(trackingPage==='logs'){content.append(logCard());renderLogs(content);}else if(trackingPage==='desligamentos')renderNightReport(content);else renderIncidentReport(content);
+  if(trackingPage==='impressoras'){
+   title.textContent='Cadastro de Impressoras';subtitle.textContent='';
+   renderImpressoras(content,impressoras,atualizarImpressoras,filtrosImpressoras,podeEditar()?async(id,host)=>{
+    await api('/api/impressoras/vinculo',{...authOptions(),method:'POST',
+     headers:{...authOptions().headers,'Content-Type':'application/json'},body:JSON.stringify({id,host})});
+    await refresh();
+   }:null,modal);
+  }else if(trackingPage==='reincidencias')renderRecurrences(content);else if(trackingPage==='cadastro')renderCadastro(content);else if(trackingPage==='reparados')renderRepaired(content);else if(trackingPage==='ranking')renderRanking(content);else if(trackingPage==='pausadas')renderPausedStores(content);else if(trackingPage==='logs'){content.append(logCard());renderLogs(content);}else if(trackingPage==='desligamentos')renderNightReport(content);else renderIncidentReport(content);
  }else if(brandPage||problemPage){
   const valid=problemPage
    ? isOtherProblem||(requestedProblem.length>0&&requestedProblem.length<=500)
@@ -834,31 +909,55 @@ function render(){
   counts.forEach(([label,value],index)=>{const kpi=surface('detail-kpi');const metric=node('strong',value);if(index===2)metric.style.color=category.color;kpi.append(node('p',label),metric);if(index>=2&&rows.length)kpi.append(node('small',storeName(index===2?rows[0]:rows.at(-1))));kpis.append(kpi);});
   top.append(kpis,chartPanel(category));content.append(top,detailStores());
  }else{
-  title.textContent='Saúde da rede das lojas';subtitle.textContent=stores+' lojas com ocorrência · '+incidents.length+' ocorrências abertas · Firewalls monitorados via Grafana';
+  title.textContent='Monitoramento Rede e Impressoras Lojas';subtitle.textContent=stores+' lojas com ocorrência · '+incidents.length+' ocorrências abertas · Firewalls monitorados via Grafana';
   const chartsRow=node('div',undefined,'chart-layout');chartsRow.append(chartPanel(),distribution());
-  const support=node('div',undefined,'support-layout');const right=node('div',undefined,'support-right');right.append(oldestPanel(),monitoringCards());support.append(brandPanel(),right);content.append(statCards(),chartsRow,support,tablePanel());
+  const support=node('div',undefined,'support-layout');const right=node('div',undefined,'support-right');right.append(oldestPanel(),monitoringCards());support.append(brandPanel(),right);content.append(statCards(),cartoesImpressoras(),chartsRow,support,tablePanel());
   const links=node('div');links.id='links';content.append(links);
  }
  if(focused==='search-stores'){const input=document.querySelector('#search-stores');input?.focus();input?.setSelectionRange(selection,selection);}
 }
 async function refresh(){
  clearTimeout(timer);activeRequest?.abort();const controller=new AbortController();activeRequest=controller;
+ let atual=null;
+ const observarFonte=valor=>{
+  if(controller.signal.aborted)return;
+  if(!atual||valor.modo==='backup'&&(atual.modo!=='backup'||valor.instante<atual.instante)||
+     valor.modo==='sem-data'&&atual.modo==='online')atual=valor;
+ };
+ const aplicarFonte=()=>{if(atual)fonteDados=atual;};
  try{
-  const options={headers:{Authorization:'Bearer '+sessionStorage.getItem(sessionKey)},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(45000)])};
+  const options={observarFonte,headers:{Authorization:'Bearer '+sessionStorage.getItem(sessionKey)},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(45000)])};
+  if(trackingPage==='impressoras'){
+   const [inventario,lojas]=await Promise.all([api('/api/impressoras',options),api('/api/cadastro',options)]);
+   if(controller.signal.aborted)return;
+   const vinculadas=new Set(inventario.linhas.filter(item=>item.estado==='vinculada').map(item=>item.host));
+   const semImpressora=lojas.lojas.filter(item=>!vinculadas.has(item.host)).map(item=>({
+    host:item.host,loja:storeName(item),marca:brand(item),modelo:'Nenhuma impressora vinculada',
+   }));
+   const cadastroPorHost=new Map(lojas.lojas.map(item=>[item.host,item]));
+   const linhas=inventario.linhas.map(item=>{
+    const loja=cadastroPorHost.get(item.host);
+    return loja?{...item,loja:storeName(loja),marca:brand(loja)}:item;
+   });
+   impressoras={...inventario,linhas:[...linhas,...semImpressora],
+    lojas:lojas.lojas.map(item=>({host:item.host,nome:storeName(item),marca:brand(item)}))};
+   aplicarFonte();render();status.textContent='';return;
+  }
   if(trackingPage==='cadastro'){
-   const queue=cadastroQueue();
+   const queue=podeEditar()?cadastroQueue():null;
    if(queue)cadastroLocal=await queue.read();
    let fresh;
    try{fresh=await api('/api/cadastro',options);}
    catch(error){
     if(controller.signal.aborted)return;
     if(!sessionStorage.getItem(sessionKey)||!cadastroLocal?.snapshot)throw error;
-    cadastro=cadastroLocal.snapshot;updated=cadastroLocal.updated;render();
+    fonteDados={modo:'sem-conexao'};cadastro=cadastroLocal.snapshot;updated=cadastroLocal.updated;render();
     status.textContent='Exibindo a cópia local. Alterações ficam na fila até o cadastro voltar.';
     return;
    }
    if(controller.signal.aborted)return;
-   if(queue){
+   aplicarFonte();
+   if(queue&&podeEditar()){
     const before=cadastroLocal.edits.length;
     cadastroLocal=await queue.sync(fresh,sendCadastro);
     if(controller.signal.aborted||!sessionStorage.getItem(sessionKey))return;
@@ -868,13 +967,65 @@ async function refresh(){
    if(controller.signal.aborted)return;
    cadastro=fresh;updated=Date.now();status.textContent='';render();return;
   }
+  if(paginasHistorico.has(trackingPage)){
+   const historico=await api('/api/acompanhamento',options);
+   if(controller.signal.aborted)return;
+   aplicarFonte();
+   tracking=historico;
+   allIncidents=(historico.eventos??[]).filter(row=>row.fim==null);
+   incidents=visibleIncidents();
+   updated=historico.ultimaColeta??0;
+   render();
+   status.textContent=updated
+    ? 'Última coleta do histórico: '+fullDates.format(updated)+' (Brasília).'+(Date.now()-updated>900000?' Confira o horário antes de usar o relatório.':'')
+    : 'Última coleta do histórico indisponível.';
+   return;
+  }
+  if(!brandPage&&!problemPage&&!detail&&!trackingPage){
+   const opcoesImpressoras={headers:options.headers,signal:options.signal};
+   void Promise.all([api('/api/impressoras',opcoesImpressoras),api('/api/cadastro',opcoesImpressoras)])
+    .then(([inventario,lojas])=>{
+     if(controller.signal.aborted)return;
+     resumoDoInventario=inventario.ultimaColeta?resumoImpressoras(inventario.linhas,lojas.lojas):null;
+     erroDoInventario=!resumoDoInventario;
+    }).catch(()=>{
+     if(!controller.signal.aborted)erroDoInventario=true;
+    }).finally(()=>{
+     if(controller.signal.aborted||!sessionStorage.getItem(sessionKey))return;
+     const grade=document.querySelector('.printer-stats-grid');
+     if(grade){
+      for(const canvas of grade.querySelectorAll('canvas')){
+       const chart=window.Chart?.getChart(canvas);
+       if(chart){chart.destroy();charts=charts.filter(item=>item!==chart);}
+      }
+      grade.replaceWith(cartoesImpressoras());
+     }
+    });
+   if(!document.querySelector('.printer-stats-grid'))render();
+  }
   const [summary,problems]=await Promise.all([api('/api/resumo?from='+period+'&to=now',options),api('/api/problemas',options)]);
-  if(controller.signal.aborted)return;panels=summary.paineis;allIncidents=problems.ocorrencias;tracking=problems.acompanhamento??tracking;incidents=visibleIncidents();updated=Date.parse(summary.atualizadoEm);status.textContent=tracking?.aviso??(tracking?.ultimaColeta&&Date.now()-tracking.ultimaColeta>900000?'O histórico está sem atualização há mais de 15 minutos. Confira a última coleta antes de usar o relatório.':'');render();
- }catch(error){if(!controller.signal.aborted)status.textContent=error.message==='Failed to fetch'?'Não foi possível atualizar. Exibindo os últimos dados.':error.message;}
- finally{if(!controller.signal.aborted)timer=setTimeout(refresh,REFRESH_SECONDS*1000);}
+  if(controller.signal.aborted)return;aplicarFonte();panels=summary.paineis;allIncidents=problems.ocorrencias;tracking=problems.acompanhamento??tracking;incidents=visibleIncidents();updated=Date.parse(summary.atualizadoEm);status.textContent=tracking?.aviso??(tracking?.ultimaColeta&&Date.now()-tracking.ultimaColeta>900000?'O histórico está sem atualização há mais de 15 minutos. Confira a última coleta antes de usar o relatório.':'');render();
+ }catch(error){
+  if(!controller.signal.aborted){
+   fonteDados=atual?.modo==='backup'?atual:{modo:'sem-conexao'};
+   status.textContent=error.message==='Failed to fetch'?'Não foi possível atualizar. Exibindo os últimos dados.':error.message;
+   if(updated)render();
+  }
+ }finally{
+  if(!controller.signal.aborted){
+   atualizarIndicadores();
+   timer=setTimeout(refresh,REFRESH_SECONDS*1000);
+  }
+ }
+}
+function atualizarIndicadores(){
+ for(const elemento of document.querySelectorAll('#live,[data-status-dados]')){
+  elemento.textContent=indicadorDados(fonteDados,updated);
+  elemento.dataset.modo=fonteDados.modo;
+ }
 }
 if(!login){
- if(!sessionStorage.getItem(sessionKey))out();
+ if(!sessionStorage.getItem(sessionKey)||!['master','viewer'].includes(sessionStorage.getItem(perfilKey)))out();
  else{
   if(brandPage||problemPage||trackingPage)document.querySelector('#periods').hidden=true;else periodControls();document.querySelector('#sair').onclick=out;
   document.querySelector('#conta').onclick=event=>{const button=document.querySelector('#sair');button.hidden=!button.hidden;event.currentTarget.setAttribute('aria-expanded',String(!button.hidden));};
@@ -890,7 +1041,7 @@ if(!login){
     document.querySelector('#loja-dialog').showModal();
   };
   document.querySelector('#fechar-dialog').onclick=()=>document.querySelector('#loja-dialog').close();
-  setInterval(()=>{document.querySelector('#live').textContent=updated?'Ao vivo · há '+Math.max(0,Math.floor((Date.now()-updated)/1000))+' s':'Conectando…';},1000);
+  setInterval(atualizarIndicadores,1000);
   refresh();
  }
 }

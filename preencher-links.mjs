@@ -1,6 +1,8 @@
-import {API_URL} from './config.js';
+import {API_URL} from './config.js?v=63';
 const state={catalog:null,plan:[],pending:[],result:[],backup:false};
 const $=id=>document.getElementById(id),status=$('status');
+const podeEditar=()=>sessionStorage.getItem('dashsoma-perfil')==='master';
+if(!podeEditar()){$('arquivo').disabled=true;status.textContent='Este perfil permite somente visualização.';}
 const headers=()=>({Authorization:'Bearer '+sessionStorage.getItem('dashhughes-session'),'Content-Type':'application/json'});
 async function api(path,body){const response=await fetch(API_URL+path,{method:body?'POST':'GET',headers:headers(),cache:'no-store',...(body?{body:JSON.stringify(body)}:{})});const data=await response.json();if(!response.ok)throw Error(data.error??'Falha HTTP '+response.status);return data;}
 function download(value,name){const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'})),link=document.createElement('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
@@ -12,7 +14,7 @@ $('arquivo').onchange=async()=>{state.backup=false;$('aplicar').disabled=true;$(
  $('detalhes').textContent=JSON.stringify({pendencias:state.pending},null,2);status.textContent=state.plan.length+' lojas para preencher · '+state.result.length+' já iguais · '+state.pending.length+' pendências.';$('backup').disabled=false;
  }catch(error){status.textContent=error.message;}};
 $('backup').onclick=()=>{download({data:new Date().toISOString(),cadastro:state.catalog},'backup-cadastro-antes-links.json');state.backup=true;$('aplicar').disabled=!state.plan.length;};
-$('aplicar').onclick=async()=>{if(!state.backup)return;$('aplicar').disabled=true;$('arquivo').disabled=true;$('backup').disabled=true;
+$('aplicar').onclick=async()=>{if(!podeEditar()||!state.backup)return;$('aplicar').disabled=true;$('arquivo').disabled=true;$('backup').disabled=true;
  for(const [i,item]of state.plan.entries()){try{const row=item.row,body={host:row.host,versao:row.versao,link1Operadora:row.link1Operadora??'',link1Velocidade:row.link1Velocidade??'',link2Operadora:row.link2Operadora??'',link2Velocidade:row.link2Velocidade??'',gerente:row.gerente??'',supervisorId:row.supervisorId??'',...item.dados};await api('/api/cadastro/loja',body);state.result.push({filial:item.filial,host:row.host,situacao:'Salvo',dados:item.dados});}catch(error){state.result.push({filial:item.filial,host:item.row.host,situacao:'Erro',erro:error.message});}status.textContent='Processando '+(i+1)+' de '+state.plan.length;}
  try{const fresh=await api('/api/cadastro');for(const item of state.result.filter(row=>row.situacao==='Salvo')){const row=fresh.lojas.find(row=>row.host===item.host);item.verificado=!!row&&Object.entries(item.dados).every(([key,value])=>row[key]===value);}}catch(error){state.pending.push({motivo:'Falha na conferência final: '+error.message});}
  const saved=state.result.filter(row=>row.situacao==='Salvo'),errors=state.result.filter(row=>row.situacao==='Erro');status.textContent='Concluído: '+saved.length+' salvos · '+saved.filter(row=>row.verificado).length+' verificados · '+errors.length+' erros · '+state.pending.length+' pendências.';$('detalhes').textContent=JSON.stringify({erros:errors,pendencias:state.pending},null,2);$('resultado').disabled=false;

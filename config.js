@@ -1,5 +1,5 @@
-// Informe a URL HTTPS pública do Worker depois da implantação.
-export const API_URL = 'https://dashhughes.adirck-sites.workers.dev';
+// Endereço HTTPS da API do DashSoma hospedada no PC.
+export const API_URL = 'https://api-dashsoma.webrocha.com.br';
 
 export const REFRESH_SECONDS = 300;
 

@@ -13,8 +13,8 @@
 .detail-kpis{align-content:stretch}
 @media(max-width:600px){.detail-kpi strong{font-size:24px}.detail-kpi small{font-size:9px}}
 header .brand{flex-shrink:0}
-.header-logo{display:block;width:180px;height:36px;object-fit:contain;object-position:left center}
-@media(max-width:600px){.header-logo{width:155px;height:31px}}
+.brand-mark{display:block;width:32px;height:32px}.brand .brand-name{font-weight:800;white-space:nowrap}
+@media(max-width:600px){.brand-mark{width:28px;height:28px}}
 .brand-link{display:flex;flex-direction:column;align-items:stretch;padding:7px;border:1px solid #2c3e50;background:#192736;transition:border-color .15s,background .15s}
 .brand-link:hover,.brand-link:focus-visible{border-color:var(--green);background:#20362f}
 .brand-logo-box{height:78px;display:grid;place-items:center;background:#fff;border-radius:5px;overflow:hidden}
@@ -87,5 +87,16 @@ header .brand{flex-shrink:0}
 
 .export-form fieldset{border:1px solid var(--border);border-radius:8px;padding:14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.export-form legend{padding:0 6px}.export-form .export-check{display:flex;align-items:center;gap:9px}.export-check input{width:17px;height:17px;flex:none;accent-color:var(--green)}@media(max-width:500px){.export-form fieldset{grid-template-columns:1fr}}
 
-.brand-mark{display:block;width:32px;height:32px}.brand .brand-name{font-weight:800;white-space:nowrap}
-@media(max-width:600px){.brand-mark{width:28px;height:28px}}
+.rodape-dados{padding:16px 0;display:flex;justify-content:flex-end}.rodape-dados .live{display:inline-block}.live[data-modo=backup],.live[data-modo=sem-data]{background:#3b2c14;color:#ffd080}.live[data-modo=backup]::before,.live[data-modo=sem-data]::before{color:#ffd080}.live[data-modo=sem-conexao]{background:#3b2028;color:#ffb0bd}.live[data-modo=sem-conexao]::before{color:#ffb0bd}
+
+.impressora-tinta{display:flex;align-items:center;gap:8px;min-width:145px;white-space:nowrap}
+.impressora-tinta progress{width:100px;height:10px;accent-color:#16834b}
+.impressora-tinta progress[data-faixa="critico"]{accent-color:#d43d47}
+.impressora-tinta progress[data-faixa="medio"]{accent-color:#c47b11}
+.impressora-tinta + .impressora-tinta{margin-top:4px}
+
+.stats-grid.printer-stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.printer-stats-grid .stat-card:last-child{grid-column:auto}
+@media(max-width:420px){.stats-grid.printer-stats-grid{grid-template-columns:1fr}}
+
+.impressoras-modelos-exportacao{display:grid;gap:7px;margin:8px 0;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px 12px}.impressoras-modelos-exportacao label{display:flex;align-items:center;gap:8px}.impressoras-modelos-exportacao input[type=checkbox]{width:auto;margin:0}
