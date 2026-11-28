@@ -86,3 +86,6 @@ header .brand{flex-shrink:0}
 .cadastro-filters label{display:grid;gap:6px;flex:1 1 200px;font-size:12px}.cadastro-filters input{min-width:0;width:100%}
 
 .export-form fieldset{border:1px solid var(--border);border-radius:8px;padding:14px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.export-form legend{padding:0 6px}.export-form .export-check{display:flex;align-items:center;gap:9px}.export-check input{width:17px;height:17px;flex:none;accent-color:var(--green)}@media(max-width:500px){.export-form fieldset{grid-template-columns:1fr}}
+
+.brand-mark{display:block;width:32px;height:32px}.brand .brand-name{font-weight:800;white-space:nowrap}
+@media(max-width:600px){.brand-mark{width:28px;height:28px}}
